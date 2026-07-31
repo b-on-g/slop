@@ -191,7 +191,9 @@
     "$mol_string",
     "$mol_hotkey",
     "$mol_portion",
-    "$bog_slop_metrics"
+    "$bog_slop_metrics",
+    "$mol_offline_install",
+    "$mol_offline"
   ],
   "dependencies": {
     "autoinstall": "*",

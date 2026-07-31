@@ -53,3 +53,5 @@
 	pack icon git \https://github.com/nin-jin/mol_icon.git
 \/mol/view
 	include \/mol/view/tree/test
+\/bog/slop
+	include \/mol/offline/install

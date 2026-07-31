@@ -8767,6 +8767,26 @@ var $;
 
 ;
 "use strict";
+var $;
+(function ($) {
+    function $mol_offline() { }
+    $.$mol_offline = $mol_offline;
+})($ || ($ = {}));
+
+;
+"use strict";
+var $;
+(function ($) {
+    try {
+        $mol_offline();
+    }
+    catch (error) {
+        console.error(error);
+    }
+})($ || ($ = {}));
+
+;
+"use strict";
 
 
 ;
@@ -8854,6 +8874,8 @@ var $;
             Input: {
                 flex: { grow: 0, shrink: 0, basis: 'auto' },
                 minHeight: '8rem',
+                maxHeight: '40vh',
+                overflow: { y: 'auto' },
             },
             Report: {
                 flex: { direction: 'column', grow: 0, shrink: 0 },

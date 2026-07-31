@@ -3449,6 +3449,13 @@ declare namespace $ {
 }
 
 declare namespace $ {
+    function $mol_offline(): void;
+}
+
+declare namespace $ {
+}
+
+declare namespace $ {
 
 	type $mol_textarea__hint_bog_slop_1 = $mol_type_enforce<
 		string
