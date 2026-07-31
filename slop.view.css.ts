@@ -12,6 +12,8 @@ namespace $.$$ {
 		Input: {
 			flex: { grow: 0, shrink: 0, basis: 'auto' },
 			minHeight: '8rem',
+			maxHeight: '40vh',
+			overflow: { y: 'auto' },
 		},
 
 		Report: {
