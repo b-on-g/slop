@@ -1,0 +1,17 @@
+{
+	"name": "Слопометр",
+	"short_name": "Слопометр",
+	"description": "Считает индекс AI-слопа в русском тексте по структурным метрикам: тире, однострочные абзацы, заголовки под копирку, слова-прокладки, перечисления по три.",
+	"id": "bog_slop",
+	"start_url": ".",
+	"display": "standalone",
+	"background_color": "#000000",
+	"theme_color": "#000000",
+	"manifest_version": 3,
+	"version": "0.1.0",
+	"scope": "./",
+	"action": {
+		"default_title": "Слопометр",
+		"default_popup": "index.html"
+	}
+}
