@@ -1,0 +1,60 @@
+name: $bog_slop
+
+permissions: write-all
+
+on:
+    workflow_dispatch:
+    push:
+    pull_request:
+    delete:
+
+concurrency:
+    group: deploy-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    build:
+        # On delete, only cleanup runs — mam_build would try to checkout the removed branch and fail.
+        if: github.event_name != 'delete'
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: hyoo-ru/mam_build@master2
+              with:
+                  package: "bog/slop"
+
+            - uses: hyoo-ru/gh-deploy@v4.4.1
+              if: github.ref == 'refs/heads/master'
+              with:
+                  folder: "bog/slop/-"
+
+            - name: Deploy feature branch
+              if: startsWith(github.ref, 'refs/heads/feature/')
+              uses: hyoo-ru/gh-deploy@v4.4.1
+              with:
+                  folder: "bog/slop/-"
+                  target-folder: ${{ github.ref_name }}
+
+    cleanup:
+        if: github.event_name == 'delete' && startsWith(github.event.ref, 'feature/')
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  ref: gh-pages
+
+            - name: Remove feature folder
+              run: |
+                  set -euo pipefail
+                  BRANCH_NAME="${{ github.event.ref }}"
+                  FOLDER="feature/${BRANCH_NAME#feature/}"
+                  if [ ! -d "$FOLDER" ]; then
+                    echo "No preview folder at $FOLDER — nothing to remove."
+                    exit 0
+                  fi
+                  git config user.name "github-actions[bot]"
+                  git config user.email "github-actions[bot]@users.noreply.github.com"
+                  git rm -rf "$FOLDER"
+                  git commit -m "Clean up preview for deleted branch: $BRANCH_NAME"
+                  git push

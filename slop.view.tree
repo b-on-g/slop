@@ -1,0 +1,60 @@
+$bog_slop $mol_page
+	title \Слопометр
+	attr *
+		^
+		bog_slop_popup <= popup false
+	body /
+		<= Input $mol_textarea
+			hint \Вставь текст — можно прямо с Markdown-разметкой
+			value? <=> text? \
+		<= Report $mol_view
+			sub <= report /
+	Empty $mol_view
+		sub /
+			<= empty_hint \Индекс считается сам, пока печатаешь. Кнопки нет.
+	Verdict $bog_slop_verdict
+		tier <= tier \human
+		index <= index_label \
+		label <= tier_label \
+		note <= paras_label \
+	Metrics $mol_view
+		sub <= metric_rows /
+	Note $mol_view
+		sub /
+			<= note \Считаются только структурные метрики. Семантику — антитезы, афоризмы, ссылки на «многих», угасание конкретики к концу текста — эта версия не смотрит: модели, которая читала бы смысл абзацев, в расширении нет.
+	Metric* $bog_slop_bar
+		title <= metric_title* \
+		value <= metric_value* \
+		portion <= metric_portion* 0
+
+$bog_slop_verdict $mol_view
+	tier \human
+	index \
+	label \
+	note \
+	attr *
+		^
+		bog_slop_tier <= tier
+	sub /
+		<= Index $mol_view
+			sub / <= index
+		<= Side $mol_view
+			sub /
+				<= Label $mol_view
+					sub / <= label
+				<= Note $mol_view
+					sub / <= note
+
+$bog_slop_bar $mol_view
+	title \
+	value \
+	portion 0
+	sub /
+		<= Head $mol_view
+			sub /
+				<= Title $mol_view
+					sub / <= title
+				<= Value $mol_view
+					sub / <= value
+		<= Bar $mol_portion
+			portion <= portion 0
