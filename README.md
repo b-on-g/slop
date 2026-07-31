@@ -21,13 +21,17 @@
 
 ## Расширение для Chrome
 
-Собранная папка — она же распакованное расширение (Manifest V3, попап без единого permission):
+Собранная папка — она же распакованное расширение (Manifest V3, попап без единого permission).
 
-1. Собрать модуль: `npx mam bog/slop` из корня [MAM](https://github.com/hyoo-ru/mam)
-2. `chrome://extensions` → включить Developer mode
-3. **Load unpacked** → выбрать `bog/slop/-/`
+Проще всего взять готовую сборку — это ветка `gh-pages`, та самая, что раздаётся на Pages:
 
-Клик по иконке открывает тот же интерфейс в попапе.
+```sh
+git clone -b gh-pages --depth 1 https://github.com/b-on-g/slop.git slop-ext
+```
+
+Дальше `chrome://extensions` → включить Developer mode → **Load unpacked** → выбрать папку `slop-ext`. Клик по иконке открывает тот же интерфейс в попапе.
+
+Если собираешь из исходников: `npx mam bog/slop` из корня [MAM](https://github.com/hyoo-ru/mam), расширение окажется в `bog/slop/-/`.
 
 ## Стек
 
