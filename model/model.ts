@@ -9,18 +9,22 @@ namespace $ {
 		// 'sk-or-v1-…',
 	]
 
-	/** Бесплатные модели OpenRouter — идентификатор и короткое имя для списка. */
+	/**
+	 * Бесплатные модели OpenRouter — идентификатор и короткое имя для списка.
+	 * Порядок и есть очередь запасных: выбранная идёт первой, дальше по списку.
+	 * Первые две отвечали строгим JSON с первой попытки на проверке 04.09.2026,
+	 * у остальных общий пул провайдера регулярно отдаёт 429 или 502.
+	 */
 	export const $bog_slop_model_names: Record< string, string > = {
-		'z-ai/glm-5.2:free': 'GLM 5.2',
 		'minimax/minimax-m3:free': 'MiniMax M3',
 		'minimax/minimax-m2.7:free': 'MiniMax M2.7',
+		'inclusionai/ling-3.0-flash-fin:free': 'Ling 3.0 Flash',
+		'dots-studio/dots-3-note-preview:free': 'Dots 3 Note',
+		'z-ai/glm-5.2:free': 'GLM 5.2',
 		'google/gemma-4-31b-it:free': 'Gemma 4 31B',
 		'google/gemma-4-26b-a4b-it:free': 'Gemma 4 26B',
 		'nvidia/nemotron-3-super-120b-a12b:free': 'Nemotron 3 Super 120B',
 		'nvidia/nemotron-3-ultra-550b-a55b:free': 'Nemotron 3 Ultra 550B',
-		'thinkingmachines/inkling:free': 'Inkling',
-		'inclusionai/ling-3.0-flash-fin:free': 'Ling 3.0 Flash',
-		'dots-studio/dots-3-note-preview:free': 'Dots 3 Note',
 	}
 
 	/** Модель по умолчанию. */
@@ -101,6 +105,12 @@ namespace $ {
 		return null
 	}
 
+	/** Ответ модели и имя той, что его дала. */
+	export type $bog_slop_model_reply = {
+		text: string
+		name: string
+	}
+
 	/** Клиент OpenRouter, размечающий абзацы по семантическим паттернам слопа. */
 	export class $bog_slop_model extends $mol_object {
 
@@ -111,14 +121,20 @@ namespace $ {
 		name() { return $bog_slop_model_name_default }
 
 		/** Сколько абзацев уходит в один запрос. */
-		batch() { return 6 }
+		batch() { return 10 }
 
 		keys() {
 			const own = this.key().trim()
 			return own ? [ own ] : this.$.$bog_slop_model_keys
 		}
 
-		request( key: string, prompt: string ) {
+		/** Выбранная модель первой, остальные бесплатные за ней запасными. */
+		names() {
+			const name = this.name()
+			return [ name, ... Object.keys( this.$.$bog_slop_model_names ).filter( other => other !== name ) ]
+		}
+
+		request( name: string, key: string, prompt: string ) {
 			return this.$.$mol_fetch.json(
 				'https://openrouter.ai/api/v1/chat/completions',
 				{
@@ -129,7 +145,7 @@ namespace $ {
 						'X-Title': 'Slopometer',
 					},
 					body: JSON.stringify({
-						model: this.name(),
+						model: name,
 						stream: false,
 						temperature: 0.1,
 						messages: [
@@ -155,34 +171,45 @@ namespace $ {
 			return 'HTTP ' + resp.code()
 		}
 
-		/** Один запрос к модели с перебором ключей по лимитам. */
+		/**
+		 * Один запрос с перебором моделей и ключей.
+		 * У бесплатных моделей пул провайдера общий на всех, так что 429 и 502 — это норма
+		 * рабочего дня, а не поломка: упёрлись — идём к следующей модели.
+		 */
 		@ $mol_action
-		shot( prompt: string ): string {
+		shot( prompt: string ): $bog_slop_model_reply {
 
 			const keys = this.keys()
 			if( !keys.length ) $mol_fail( new Error( 'Нет ключа OpenRouter' ) )
 
-			let last = 'Ни один ключ не ответил'
+			let last = 'Ни одна бесплатная модель не ответила'
 
 			for( const key of keys ) {
 
-				try {
+				for( const name of this.names() ) {
 
-					const resp = this.request( key, prompt )
-					const content = resp?.choices?.[0]?.message?.content
-					if( typeof content === 'string' && content.trim() ) return content
+					try {
 
-					last = 'Модель вернула пустой ответ'
+						const resp = this.request( name, key, prompt )
+						const content = resp?.choices?.[0]?.message?.content
+						if( typeof content === 'string' && content.trim() ) return { text: content, name }
 
-				} catch( error: any ) {
+						last = `${ name }: пустой ответ`
 
-					const resp = error?.cause as $mol_fetch_response
-					if( !resp?.code ) $mol_fail_hidden( error )
+					} catch( error: any ) {
 
-					// 429 — дневной лимит, 402 — кончился баланс: пробуем следующий ключ
-					if( resp.code() !== 429 && resp.code() !== 402 ) $mol_fail( new Error( this.reason( resp ) ) )
+						const resp = error?.cause as $mol_fetch_response
+						if( !resp?.code ) $mol_fail_hidden( error )
 
-					last = this.reason( resp )
+						// Ключ не приняли — остальные модели с ним тоже не выйдут
+						if( resp.code() === 401 ) {
+							last = this.reason( resp )
+							break
+						}
+
+						last = `${ name }: ${ this.reason( resp ) }`
+
+					}
 
 				}
 
@@ -206,12 +233,17 @@ namespace $ {
 			} )
 
 			const size = this.batch()
+			let used = this.name()
 
 			for( let start = 0; start < eligible.length; start += size ) {
 
 				const batch = eligible.slice( start, start + size )
 				const prompt = batch.map( index => `[${ index + 1 }] ${ paras[ index ] }` ).join( '\n\n' )
-				const items = $bog_slop_model_items( this.shot( prompt ) ) ?? []
+
+				const reply = this.shot( prompt )
+				used = reply.name
+
+				const items = $bog_slop_model_items( reply.text ) ?? []
 
 				for( const item of items ) {
 
@@ -233,7 +265,10 @@ namespace $ {
 
 			}
 
-			return marks as readonly $bog_slop_metrics_semantics[]
+			return {
+				marks: marks as readonly $bog_slop_metrics_semantics[],
+				name: used,
+			}
 		}
 
 	}

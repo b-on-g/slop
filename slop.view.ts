@@ -13,6 +13,8 @@ namespace $.$$ {
 	type Done = {
 		slug: string
 		marks: readonly $bog_slop_metrics_semantics[] | null
+		/** Кто ответил на самом деле: выбранная модель могла упереться в лимит и уступить запасной. */
+		name: string
 	}
 
 	export class $bog_slop extends $.$bog_slop {
@@ -96,13 +98,15 @@ namespace $.$$ {
 
 		/**
 		 * Волокно, которое ходит в модель за семантикой.
-		 * Ключ ячейки — слепок: сменился текст, и старая ячейка со своим волокном уходит в мусор,
-		 * не дождавшись ни паузы, ни ответа.
+		 * Ключ ячейки — слепок, так что на каждый осевший текст заводится своё волокно.
+		 * Промис из ячейки НЕ возвращать: $mol_mem считает промис признаком незавершённого
+		 * счёта, ячейка подвисает, а по резолву пересчитывается и шлёт запрос заново — по кругу.
 		 */
 		@ $mol_mem_key
 		task( slug: string ) {
-			if( !slug ) return null
-			return $mol_wire_async( this ).analyze( slug, this.paras() )
+			if( !slug ) return ''
+			$mol_wire_async( this ).analyze( slug, this.paras() )
+			return slug
 		}
 
 		/** Разметка абзацев моделью. Дёргается только через $mol_wire_async, отдельным волокном. */
@@ -114,10 +118,11 @@ namespace $.$$ {
 			this.failed( '' )
 
 			try {
-				this.done({ slug, marks: this.model().semantics( paras ) })
+				const reply = this.model().semantics( paras )
+				this.done({ slug, marks: reply.marks, name: reply.name })
 			} catch( error: any ) {
 				if( $mol_promise_like( error ) ) $mol_fail_hidden( error )
-				this.done({ slug, marks: null })
+				this.done({ slug, marks: null, name: '' })
 				if( $mol_fail_log( error ) ) this.failed( error.message )
 			}
 
@@ -180,7 +185,10 @@ namespace $.$$ {
 			const marks = this.marks()
 			if( !marks ) return []
 
-			return [ `Модель разметила абзацев: ${ marks.length }` ]
+			const name = this.done()?.name ?? ''
+			const label = this.$.$bog_slop_model_names[ name ] ?? name
+
+			return [ `${ label } разметила абзацев: ${ marks.length }` ]
 		}
 
 		override note() {
