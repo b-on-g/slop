@@ -4227,6 +4227,12 @@ declare namespace $ {
     const $bog_slop_metrics_bands: Record<$bog_slop_metrics_tier, readonly [number, number]>;
     function $bog_slop_metrics_clamp01(val: number): number;
     function $bog_slop_metrics_strip(text: string): string;
+    /**
+     * Похож ли блок на код: больше половины строк выглядят кодом, а не прозой.
+     * Нужно для кода без ```-ограждений — из телеграма и чатов он прилетает голым,
+     * а попав в абзацы, разбавляет знаменатель каждой доли и уводит вердикт в human.
+     */
+    function $bog_slop_metrics_code(block: string): boolean;
     function $bog_slop_metrics_paras(text: string): string[];
     /** Стоит ли отдавать абзац модели: не ограждение кода, не жирный подзаголовок, не обрывок. */
     function $bog_slop_metrics_prose(para: string): boolean;

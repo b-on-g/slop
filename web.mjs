@@ -10085,6 +10085,18 @@ var $;
         'катастроф', 'хаос',
     ];
     const TABLE_PREFIXES = ['|', '-', '*', '>', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    /**
+     * Приметы строки кода. Кириллицу тут ловить нечем нарочно: `\w` в JS про ASCII,
+     * так что на русской прозе шелл-шаблоны не срабатывают в принципе.
+     */
+    const CODE_LINES = [
+        /[;{}]\s*$/,
+        /\\\s*$/,
+        /^\s*(?:import|export|from|const|let|var|function|class|return|async|await|def|package|public|private|#include|#define)\b/,
+        /^\s*[\w./-]+\s+-{1,2}[\w-]+/,
+        /^\s+-{1,2}[\w-]+/,
+        /^\s*[\w.$]+\s*[:=]\s*\S+\s*,?\s*$/,
+    ];
     const WORD_RE = /[\p{L}\p{N}_]+/gu;
     const TRIAD_RE = /[\p{L}\p{N}_$-]+(?:[^,.!?\n]{0,30})?,\s+[\p{L}\p{N}_$-]+(?:[^,.!?\n]{0,30})?\s+и\s+[\p{L}\p{N}_$-]+/u;
     function $bog_slop_metrics_clamp01(val) {
@@ -10116,6 +10128,19 @@ var $;
             .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
     }
     $.$bog_slop_metrics_strip = $bog_slop_metrics_strip;
+    /**
+     * Похож ли блок на код: больше половины строк выглядят кодом, а не прозой.
+     * Нужно для кода без ```-ограждений — из телеграма и чатов он прилетает голым,
+     * а попав в абзацы, разбавляет знаменатель каждой доли и уводит вердикт в human.
+     */
+    function $bog_slop_metrics_code(block) {
+        const lines = lines_of(block).filter(line => line.trim());
+        if (!lines.length)
+            return false;
+        const hits = lines.filter(line => CODE_LINES.some(shape => shape.test(line))).length;
+        return hits / lines.length > 0.5;
+    }
+    $.$bog_slop_metrics_code = $bog_slop_metrics_code;
     function $bog_slop_metrics_paras(text) {
         const paras = [];
         for (let block of text.split(/\n\s*\n/)) {
@@ -10137,6 +10162,8 @@ var $;
                     && !/^[-*]\s+\S/.test(head);
             });
             if (table)
+                continue;
+            if ($bog_slop_metrics_code(block))
                 continue;
             paras.push(block);
         }
@@ -10284,11 +10311,14 @@ var $;
             triad: metric_triad(paras, text),
         };
         if (semantics?.length) {
-            const marks = paras.map((para, index) => semantics[index]);
+            // Доля считается по прочитанному, а не по всем абзацам: абзац, который модели
+            // не показали, не может свидетельствовать в пользу «паттерна тут нет».
+            const judged = paras.flatMap((para, index) => $bog_slop_metrics_prose(para) ? [semantics[index]] : []);
             for (const id of $.$bog_slop_metrics_ids_llm) {
-                scores[id] = metric_pattern(marks.map(mark => mark?.patterns.includes(id) ?? false));
+                scores[id] = metric_pattern(judged.map(mark => mark?.patterns.includes(id) ?? false));
             }
-            scores.concreteness_decay = $bog_slop_metrics_decay(marks.map(mark => mark?.concreteness ?? null));
+            // А вот у тренда конкретики места на оси остаются исходные: пропуск не сдвигает соседей.
+            scores.concreteness_decay = $bog_slop_metrics_decay(paras.map((para, index) => semantics[index]?.concreteness ?? null));
         }
         else {
             // Без модели остаётся грубая эвристика по маркерам — остальную семантику посчитать нечем.

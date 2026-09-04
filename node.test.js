@@ -10434,6 +10434,18 @@ var $;
         'катастроф', 'хаос',
     ];
     const TABLE_PREFIXES = ['|', '-', '*', '>', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+    /**
+     * Приметы строки кода. Кириллицу тут ловить нечем нарочно: `\w` в JS про ASCII,
+     * так что на русской прозе шелл-шаблоны не срабатывают в принципе.
+     */
+    const CODE_LINES = [
+        /[;{}]\s*$/,
+        /\\\s*$/,
+        /^\s*(?:import|export|from|const|let|var|function|class|return|async|await|def|package|public|private|#include|#define)\b/,
+        /^\s*[\w./-]+\s+-{1,2}[\w-]+/,
+        /^\s+-{1,2}[\w-]+/,
+        /^\s*[\w.$]+\s*[:=]\s*\S+\s*,?\s*$/,
+    ];
     const WORD_RE = /[\p{L}\p{N}_]+/gu;
     const TRIAD_RE = /[\p{L}\p{N}_$-]+(?:[^,.!?\n]{0,30})?,\s+[\p{L}\p{N}_$-]+(?:[^,.!?\n]{0,30})?\s+и\s+[\p{L}\p{N}_$-]+/u;
     function $bog_slop_metrics_clamp01(val) {
@@ -10465,6 +10477,19 @@ var $;
             .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
     }
     $.$bog_slop_metrics_strip = $bog_slop_metrics_strip;
+    /**
+     * Похож ли блок на код: больше половины строк выглядят кодом, а не прозой.
+     * Нужно для кода без ```-ограждений — из телеграма и чатов он прилетает голым,
+     * а попав в абзацы, разбавляет знаменатель каждой доли и уводит вердикт в human.
+     */
+    function $bog_slop_metrics_code(block) {
+        const lines = lines_of(block).filter(line => line.trim());
+        if (!lines.length)
+            return false;
+        const hits = lines.filter(line => CODE_LINES.some(shape => shape.test(line))).length;
+        return hits / lines.length > 0.5;
+    }
+    $.$bog_slop_metrics_code = $bog_slop_metrics_code;
     function $bog_slop_metrics_paras(text) {
         const paras = [];
         for (let block of text.split(/\n\s*\n/)) {
@@ -10486,6 +10511,8 @@ var $;
                     && !/^[-*]\s+\S/.test(head);
             });
             if (table)
+                continue;
+            if ($bog_slop_metrics_code(block))
                 continue;
             paras.push(block);
         }
@@ -10633,11 +10660,14 @@ var $;
             triad: metric_triad(paras, text),
         };
         if (semantics?.length) {
-            const marks = paras.map((para, index) => semantics[index]);
+            // Доля считается по прочитанному, а не по всем абзацам: абзац, который модели
+            // не показали, не может свидетельствовать в пользу «паттерна тут нет».
+            const judged = paras.flatMap((para, index) => $bog_slop_metrics_prose(para) ? [semantics[index]] : []);
             for (const id of $.$bog_slop_metrics_ids_llm) {
-                scores[id] = metric_pattern(marks.map(mark => mark?.patterns.includes(id) ?? false));
+                scores[id] = metric_pattern(judged.map(mark => mark?.patterns.includes(id) ?? false));
             }
-            scores.concreteness_decay = $bog_slop_metrics_decay(marks.map(mark => mark?.concreteness ?? null));
+            // А вот у тренда конкретики места на оси остаются исходные: пропуск не сдвигает соседей.
+            scores.concreteness_decay = $bog_slop_metrics_decay(paras.map((para, index) => semantics[index]?.concreteness ?? null));
         }
         else {
             // Без модели остаётся грубая эвристика по маркерам — остальную семантику посчитать нечем.
@@ -15262,12 +15292,28 @@ var $;
         'P.S. Да, в начале я чуть приврал. \"Ничего не ставим\" не значит \"ничего не делаем\": ключ бека положить на VPS, пароли в sshd выключить, файрвол на VPS закрыть на все, кроме 22 с IP бека. Но это все тот же вечер, и никакого софта на VPS так и не появилось.',
         'Такие дела.',
     ].join('\n\n');
-    /** Разметка, которую на этом посте дала minimax-m3 через OpenRouter 04.09.2026. */
+    /**
+     * Разметка, которую на этом посте дала minimax-m3 через OpenRouter 04.09.2026.
+     * Семнадцать записей, а не двадцать две: пять блоков кода до модели уже не доезжают.
+     */
     const marks_post = [
-        [null, []], [1, []], [1, ['aphorism']], [2, []], [2, []], [2, []],
-        [2, []], [2, []], [1, []], [2, []], [2, []], [2, []], [0, []],
-        [2, []], [2, []], [1, ['antithesis']], [1, ['aphorism']], [null, []],
-        [1, ['antithesis']], [1, []], [1, ['pseudo_sincerity']], [null, []],
+        [null, []],
+        [0, []],
+        [1, []],
+        [2, []],
+        [2, []],
+        [2, ['antithesis']],
+        [1, []],
+        [0, []],
+        [2, ['antithesis']],
+        [0, []],
+        [1, ['vague_attribution']],
+        [1, []],
+        [null, []],
+        [1, ['antithesis']],
+        [1, ['aphorism']],
+        [1, ['pseudo_sincerity']],
+        [null, []],
     ].map(([concreteness, patterns]) => ({
         concreteness: concreteness,
         patterns: patterns,
@@ -15347,42 +15393,55 @@ var $;
             $mol_assert_equal(report.scores.aphorism, 0);
             $mol_assert_equal(Number.isFinite(report.scores.concreteness_decay), true);
         },
-        'Код без ограждений остаётся полноценным абзацем'() {
+        'Код без ограждений в абзацы не попадает'() {
             const paras = $bog_slop_metrics_paras($bog_slop_metrics_strip(text_post));
-            $mol_assert_equal(paras.length, 22);
-            // Пять абзацев из двадцати двух — голые shell и TS. Они проходят и strip,
-            // и фильтр прозы, так что разбавляют знаменатель каждой доли на четверть.
-            const code = [5, 9, 10, 13, 14];
-            for (const index of code)
-                $mol_assert_equal($bog_slop_metrics_prose(paras[index]), true);
-            $mol_assert_equal(paras[5].startsWith('autossh'), true);
+            $mol_assert_equal(paras.length, 17);
+            for (const block of [
+                'autossh -M 0 -N -D 127.0.0.1:1080 \\\n  -o ExitOnForwardFailure=yes \\\n  user@vps',
+                'import { Agent } from \"node:http\";',
+                'export function createProxyAgent(proxyUrl: string): Agent {\n  return new SocksProxyAgent(proxyUrl);\n}',
+                'const agent = createProxyAgent(process.env.PROXY_URL);',
+                'export const http = axios.create({\n  httpAgent: agent,\n  proxy: false,\n});',
+            ])
+                $mol_assert_equal($bog_slop_metrics_code(block), true);
+            for (const para of paras)
+                $mol_assert_equal($bog_slop_metrics_code(para), false);
         },
-        'Короткая реплика модели не достаётся, но из знаменателя не выпадает'() {
-            // Ровно те три абзаца, где слоп слышнее всего, модель и не увидит.
+        'Русская проза за код не сходит'() {
+            for (const source of [text_dashes, text_short, text_filler, text_human, text_post]) {
+                for (const para of $bog_slop_metrics_paras($bog_slop_metrics_strip(source))) {
+                    $mol_assert_equal($bog_slop_metrics_code(para), false);
+                }
+            }
+        },
+        'Доля паттерна считается по прочитанному, а не по всем абзацам'() {
+            // Три реплики короче шести слов модели не достаются, значит и в знаменателе им не место.
             $mol_assert_equal($bog_slop_metrics_prose('Такие дела.'), false);
             $mol_assert_equal($bog_slop_metrics_prose('А потом случилось смешное.'), false);
             $mol_assert_equal($bog_slop_metrics_prose('Здарова, вайбкодеры!'), false);
-            // Две антитезы на 22 абзаца, хотя прочитано было 19.
+            // Три антитезы на четырнадцать прочитанных абзацев, а не на семнадцать всего.
             const report = $bog_slop_metrics(text_post, marks_post);
-            $mol_assert_equal(report.scores.antithesis.toFixed(4), ((2 / 22 - 0.02) / 0.35).toFixed(4));
+            $mol_assert_equal(report.scores.antithesis.toFixed(4), ((3 / 14 - 0.02) / 0.35).toFixed(4));
         },
-        'Три метрики выше HIGH без единой на FULL держат вердикт human'() {
+        'Одной метрики на FULL хватает, четырёх на HIGH тоже'() {
             $mol_assert_equal($bog_slop_metrics_tier_of({ a: 0.71, b: 0.64, c: 0.73 }), 'human');
             $mol_assert_equal($bog_slop_metrics_tier_of({ a: 0.71, b: 0.64, c: 0.73, d: 0.56 }), 'mixed');
             $mol_assert_equal($bog_slop_metrics_tier_of({ a: 0.91 }), 'mixed');
-            // Полоса human кончается на 0.35, так что интенсивность выше в индекс не пролезает.
-            for (const marks of [null, marks_post]) {
-                const report = $bog_slop_metrics(text_post, marks);
-                $mol_assert_equal(report.tier, 'human');
-                $mol_assert_equal(report.final <= 0.35, true);
-            }
+            $mol_assert_equal($bog_slop_metrics_tier_of({ a: 0.91, b: 0.91, c: 0.91 }), 'ai');
         },
-        'На посте про прокси три метрики упираются в HIGH и ни одна не берёт FULL'() {
+        'Пост про прокси — слоп с примесью человеческого текста'() {
             const report = $bog_slop_metrics(text_post, marks_post);
+            $mol_assert_equal(report.tier, 'mixed');
+            $mol_assert_equal(report.final > 0.5, true);
             const high = report.ids.filter(id => report.scores[id] >= 0.55);
             const full = report.ids.filter(id => report.scores[id] >= 0.90);
-            $mol_assert_equal(full.length, 0);
-            $mol_assert_equal(high.join(' '), 'one_liner triad concreteness_decay');
+            $mol_assert_equal(full.join(' '), 'one_liner');
+            $mol_assert_equal(high.join(' '), 'antithesis one_liner triad');
+        },
+        'Голый структурный разбор поста до mixed дотягивает сам'() {
+            const report = $bog_slop_metrics(text_post);
+            $mol_assert_equal(report.tier, 'mixed');
+            $mol_assert_equal(report.final > 0.5, true);
         },
         'Обрывки и ограждения кода модели не отдаются'() {
             $mol_assert_equal($bog_slop_metrics_prose('```js\nconst a = 1\n```'), false);
