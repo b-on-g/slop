@@ -4161,12 +4161,22 @@ declare namespace $ {
      * Взять свой: https://openrouter.ai/keys
      */
     const $bog_slop_model_keys: readonly string[];
-    /** Бесплатные модели OpenRouter — идентификатор и короткое имя для списка. */
+    /**
+     * Бесплатные модели OpenRouter — идентификатор и короткое имя для списка.
+     * Порядок и есть очередь запасных: выбранная идёт первой, дальше по списку.
+     * Первые две отвечали строгим JSON с первой попытки на проверке 04.09.2026,
+     * у остальных общий пул провайдера регулярно отдаёт 429 или 502.
+     */
     const $bog_slop_model_names: Record<string, string>;
     /** Модель по умолчанию. */
     const $bog_slop_model_name_default: string;
     /** Достаёт массив разметок из ответа модели, даже если тот завёрнут в болтовню или ограждение кода. */
     function $bog_slop_model_items(raw: string): any[] | null;
+    /** Ответ модели и имя той, что его дала. */
+    type $bog_slop_model_reply = {
+        text: string;
+        name: string;
+    };
     /** Клиент OpenRouter, размечающий абзацы по семантическим паттернам слопа. */
     class $bog_slop_model extends $mol_object {
         /** Ключ, введённый пользователем. Пустой — берётся зашитый пул. */
@@ -4176,13 +4186,22 @@ declare namespace $ {
         /** Сколько абзацев уходит в один запрос. */
         batch(): number;
         keys(): readonly string[];
-        request(key: string, prompt: string): any;
+        /** Выбранная модель первой, остальные бесплатные за ней запасными. */
+        names(): string[];
+        request(name: string, key: string, prompt: string): any;
         /** Текст ошибки, который вернул сам OpenRouter. */
         reason(resp: $mol_fetch_response): string;
-        /** Один запрос к модели с перебором ключей по лимитам. */
-        shot(prompt: string): string;
+        /**
+         * Один запрос с перебором моделей и ключей.
+         * У бесплатных моделей пул провайдера общий на всех, так что 429 и 502 — это норма
+         * рабочего дня, а не поломка: упёрлись — идём к следующей модели.
+         */
+        shot(prompt: string): $bog_slop_model_reply;
         /** Разметка каждого абзаца: найденные паттерны и плотность конкретики. */
-        semantics(paras: readonly string[]): readonly $bog_slop_metrics_semantics[];
+        semantics(paras: readonly string[]): {
+            marks: readonly $bog_slop_metrics_semantics[];
+            name: string;
+        };
     }
 }
 
@@ -4458,6 +4477,8 @@ declare namespace $.$$ {
     type Done = {
         slug: string;
         marks: readonly $bog_slop_metrics_semantics[] | null;
+        /** Кто ответил на самом деле: выбранная модель могла упереться в лимит и уступить запасной. */
+        name: string;
     };
     export class $bog_slop extends $.$bog_slop {
         popup(): boolean;
@@ -4477,10 +4498,11 @@ declare namespace $.$$ {
         failed(next?: string): string;
         /**
          * Волокно, которое ходит в модель за семантикой.
-         * Ключ ячейки — слепок: сменился текст, и старая ячейка со своим волокном уходит в мусор,
-         * не дождавшись ни паузы, ни ответа.
+         * Ключ ячейки — слепок, так что на каждый осевший текст заводится своё волокно.
+         * Промис из ячейки НЕ возвращать: $mol_mem считает промис признаком незавершённого
+         * счёта, ячейка подвисает, а по резолву пересчитывается и шлёт запрос заново — по кругу.
          */
-        task(slug: string): Promise<void> | null;
+        task(slug: string): string;
         /** Разметка абзацев моделью. Дёргается только через $mol_wire_async, отдельным волокном. */
         analyze(slug: string, paras: readonly string[]): void;
         /** Разметка, которая относится именно к текущему тексту. Иначе её нет. */

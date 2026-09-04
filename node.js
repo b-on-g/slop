@@ -10952,18 +10952,22 @@ var $;
     $.$bog_slop_model_keys = [
     // 'sk-or-v1-…',
     ];
-    /** Бесплатные модели OpenRouter — идентификатор и короткое имя для списка. */
+    /**
+     * Бесплатные модели OpenRouter — идентификатор и короткое имя для списка.
+     * Порядок и есть очередь запасных: выбранная идёт первой, дальше по списку.
+     * Первые две отвечали строгим JSON с первой попытки на проверке 04.09.2026,
+     * у остальных общий пул провайдера регулярно отдаёт 429 или 502.
+     */
     $.$bog_slop_model_names = {
-        'z-ai/glm-5.2:free': 'GLM 5.2',
         'minimax/minimax-m3:free': 'MiniMax M3',
         'minimax/minimax-m2.7:free': 'MiniMax M2.7',
+        'inclusionai/ling-3.0-flash-fin:free': 'Ling 3.0 Flash',
+        'dots-studio/dots-3-note-preview:free': 'Dots 3 Note',
+        'z-ai/glm-5.2:free': 'GLM 5.2',
         'google/gemma-4-31b-it:free': 'Gemma 4 31B',
         'google/gemma-4-26b-a4b-it:free': 'Gemma 4 26B',
         'nvidia/nemotron-3-super-120b-a12b:free': 'Nemotron 3 Super 120B',
         'nvidia/nemotron-3-ultra-550b-a55b:free': 'Nemotron 3 Ultra 550B',
-        'thinkingmachines/inkling:free': 'Inkling',
-        'inclusionai/ling-3.0-flash-fin:free': 'Ling 3.0 Flash',
-        'dots-studio/dots-3-note-preview:free': 'Dots 3 Note',
     };
     /** Модель по умолчанию. */
     $.$bog_slop_model_name_default = Object.keys($.$bog_slop_model_names)[0];
@@ -11047,12 +11051,17 @@ var $;
         /** Идентификатор модели OpenRouter. */
         name() { return $.$bog_slop_model_name_default; }
         /** Сколько абзацев уходит в один запрос. */
-        batch() { return 6; }
+        batch() { return 10; }
         keys() {
             const own = this.key().trim();
             return own ? [own] : this.$.$bog_slop_model_keys;
         }
-        request(key, prompt) {
+        /** Выбранная модель первой, остальные бесплатные за ней запасными. */
+        names() {
+            const name = this.name();
+            return [name, ...Object.keys(this.$.$bog_slop_model_names).filter(other => other !== name)];
+        }
+        request(name, key, prompt) {
             return this.$.$mol_fetch.json('https://openrouter.ai/api/v1/chat/completions', {
                 method: 'POST',
                 headers: {
@@ -11061,7 +11070,7 @@ var $;
                     'X-Title': 'Slopometer',
                 },
                 body: JSON.stringify({
-                    model: this.name(),
+                    model: name,
                     stream: false,
                     temperature: 0.1,
                     messages: [
@@ -11085,28 +11094,36 @@ var $;
             }
             return 'HTTP ' + resp.code();
         }
-        /** Один запрос к модели с перебором ключей по лимитам. */
+        /**
+         * Один запрос с перебором моделей и ключей.
+         * У бесплатных моделей пул провайдера общий на всех, так что 429 и 502 — это норма
+         * рабочего дня, а не поломка: упёрлись — идём к следующей модели.
+         */
         shot(prompt) {
             const keys = this.keys();
             if (!keys.length)
                 $mol_fail(new Error('Нет ключа OpenRouter'));
-            let last = 'Ни один ключ не ответил';
+            let last = 'Ни одна бесплатная модель не ответила';
             for (const key of keys) {
-                try {
-                    const resp = this.request(key, prompt);
-                    const content = resp?.choices?.[0]?.message?.content;
-                    if (typeof content === 'string' && content.trim())
-                        return content;
-                    last = 'Модель вернула пустой ответ';
-                }
-                catch (error) {
-                    const resp = error?.cause;
-                    if (!resp?.code)
-                        $mol_fail_hidden(error);
-                    // 429 — дневной лимит, 402 — кончился баланс: пробуем следующий ключ
-                    if (resp.code() !== 429 && resp.code() !== 402)
-                        $mol_fail(new Error(this.reason(resp)));
-                    last = this.reason(resp);
+                for (const name of this.names()) {
+                    try {
+                        const resp = this.request(name, key, prompt);
+                        const content = resp?.choices?.[0]?.message?.content;
+                        if (typeof content === 'string' && content.trim())
+                            return { text: content, name };
+                        last = `${name}: пустой ответ`;
+                    }
+                    catch (error) {
+                        const resp = error?.cause;
+                        if (!resp?.code)
+                            $mol_fail_hidden(error);
+                        // Ключ не приняли — остальные модели с ним тоже не выйдут
+                        if (resp.code() === 401) {
+                            last = this.reason(resp);
+                            break;
+                        }
+                        last = `${name}: ${this.reason(resp)}`;
+                    }
                 }
             }
             return $mol_fail(new Error(last));
@@ -11123,10 +11140,13 @@ var $;
                     eligible.push(index);
             });
             const size = this.batch();
+            let used = this.name();
             for (let start = 0; start < eligible.length; start += size) {
                 const batch = eligible.slice(start, start + size);
                 const prompt = batch.map(index => `[${index + 1}] ${paras[index]}`).join('\n\n');
-                const items = $bog_slop_model_items(this.shot(prompt)) ?? [];
+                const reply = this.shot(prompt);
+                used = reply.name;
+                const items = $bog_slop_model_items(reply.text) ?? [];
                 for (const item of items) {
                     const index = Number(item?.id) - 1;
                     if (batch.indexOf(index) < 0)
@@ -11141,7 +11161,10 @@ var $;
                     };
                 }
             }
-            return marks;
+            return {
+                marks: marks,
+                name: used,
+            };
         }
     }
     __decorate([
@@ -11274,13 +11297,15 @@ var $;
             }
             /**
              * Волокно, которое ходит в модель за семантикой.
-             * Ключ ячейки — слепок: сменился текст, и старая ячейка со своим волокном уходит в мусор,
-             * не дождавшись ни паузы, ни ответа.
+             * Ключ ячейки — слепок, так что на каждый осевший текст заводится своё волокно.
+             * Промис из ячейки НЕ возвращать: $mol_mem считает промис признаком незавершённого
+             * счёта, ячейка подвисает, а по резолву пересчитывается и шлёт запрос заново — по кругу.
              */
             task(slug) {
                 if (!slug)
-                    return null;
-                return $mol_wire_async(this).analyze(slug, this.paras());
+                    return '';
+                $mol_wire_async(this).analyze(slug, this.paras());
+                return slug;
             }
             /** Разметка абзацев моделью. Дёргается только через $mol_wire_async, отдельным волокном. */
             analyze(slug, paras) {
@@ -11289,12 +11314,13 @@ var $;
                     return;
                 this.failed('');
                 try {
-                    this.done({ slug, marks: this.model().semantics(paras) });
+                    const reply = this.model().semantics(paras);
+                    this.done({ slug, marks: reply.marks, name: reply.name });
                 }
                 catch (error) {
                     if ($mol_promise_like(error))
                         $mol_fail_hidden(error);
-                    this.done({ slug, marks: null });
+                    this.done({ slug, marks: null, name: '' });
                     if ($mol_fail_log(error))
                         this.failed(error.message);
                 }
@@ -11352,7 +11378,9 @@ var $;
                 const marks = this.marks();
                 if (!marks)
                     return [];
-                return [`Модель разметила абзацев: ${marks.length}`];
+                const name = this.done()?.name ?? '';
+                const label = this.$.$bog_slop_model_names[name] ?? name;
+                return [`${label} разметила абзацев: ${marks.length}`];
             }
             note() {
                 if (this.marks())
