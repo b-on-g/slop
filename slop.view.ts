@@ -6,6 +6,15 @@ namespace $.$$ {
 		ai: 'нейросеть',
 	}
 
+	/** Пауза после последней клавиши, чтобы не гонять модель на каждую букву. */
+	const DEBOUNCE = 1500
+
+	/** Разбор от модели вместе со слепком текста, для которого он получен. */
+	type Done = {
+		slug: string
+		marks: readonly $bog_slop_metrics_semantics[] | null
+	}
+
 	export class $bog_slop extends $.$bog_slop {
 
 		@ $mol_mem
@@ -16,19 +25,167 @@ namespace $.$$ {
 			return /[?#&]popup\b/.test( loc.href )
 		}
 
+		// НАСТРОЙКИ
+
+		override llm_on( next?: boolean ) {
+			return this.$.$mol_state_local.value< boolean >( 'bog_slop_llm', next ) ?? false
+		}
+
+		override llm_model( next?: string ) {
+			const name = this.$.$mol_state_local.value< string >( 'bog_slop_model', next )
+			// Бесплатные модели на OpenRouter приходят и уходят: забытую в хранилище подменяем живой.
+			if( !name || !( name in this.$.$bog_slop_model_names ) ) return this.$.$bog_slop_model_name_default
+			return name
+		}
+
+		override llm_key( next?: string ) {
+			return this.$.$mol_state_local.value< string >( 'bog_slop_key', next ) ?? ''
+		}
+
+		override model_dict() {
+			return this.$.$bog_slop_model_names
+		}
+
+		@ $mol_mem
+		override setup() {
+			if( !this.llm_on() ) return []
+			return [ this.Model(), this.Key(), this.Keys_link() ]
+		}
+
+		/** Есть ли чем авторизоваться: свой ключ или зашитый в сборку пул. */
+		key_ready() {
+			return Boolean( this.llm_key().trim() || this.$.$bog_slop_model_keys.length )
+		}
+
+		// РАЗБОР
+
+		/** Абзацы ровно в том виде, в каком их видят метрики. */
+		@ $mol_mem
+		paras() {
+			return $bog_slop_metrics_paras( $bog_slop_metrics_strip( this.text() ) )
+		}
+
+		/** Слепок текста и настроек: пока он не меняется, ходить в модель незачем. */
+		@ $mol_mem
+		slug() {
+			if( !this.llm_on() ) return ''
+			if( !this.key_ready() ) return ''
+			if( !this.paras().length ) return ''
+			return [ this.llm_model(), this.llm_key().trim(), this.text() ].join( '\n' )
+		}
+
+		@ $mol_mem
+		model() {
+			return this.$.$bog_slop_model.make({
+				name: $mol_const( this.llm_model() ),
+				key: $mol_const( this.llm_key().trim() ),
+			})
+		}
+
+		@ $mol_mem
+		done( next?: Done | null ) {
+			$mol_wire_solid()
+			return next ?? null
+		}
+
+		@ $mol_mem
+		failed( next?: string ) {
+			$mol_wire_solid()
+			return next ?? ''
+		}
+
+		/**
+		 * Волокно, которое ходит в модель за семантикой.
+		 * Ключ ячейки — слепок: сменился текст, и старая ячейка со своим волокном уходит в мусор,
+		 * не дождавшись ни паузы, ни ответа.
+		 */
+		@ $mol_mem_key
+		task( slug: string ) {
+			if( !slug ) return null
+			return $mol_wire_async( this ).analyze( slug, this.paras() )
+		}
+
+		/** Разметка абзацев моделью. Дёргается только через $mol_wire_async, отдельным волокном. */
+		analyze( slug: string, paras: readonly string[] ) {
+
+			this.$.$mol_wait_timeout( DEBOUNCE )
+			if( $mol_wire_probe( ()=> this.slug() ) !== slug ) return
+
+			this.failed( '' )
+
+			try {
+				this.done({ slug, marks: this.model().semantics( paras ) })
+			} catch( error: any ) {
+				if( $mol_promise_like( error ) ) $mol_fail_hidden( error )
+				this.done({ slug, marks: null })
+				if( $mol_fail_log( error ) ) this.failed( error.message )
+			}
+
+		}
+
+		/** Разметка, которая относится именно к текущему тексту. Иначе её нет. */
+		@ $mol_mem
+		marks() {
+			const done = this.done()
+			if( !done ) return null
+			if( done.slug !== this.slug() ) return null
+			return done.marks
+		}
+
+		busy() {
+			const slug = this.slug()
+			if( !slug ) return false
+			return this.done()?.slug !== slug
+		}
+
 		@ $mol_mem
 		verdict() {
-			return $bog_slop_metrics( this.text() )
+			return $bog_slop_metrics( this.text(), this.marks() )
 		}
 
 		filled() {
 			return this.text().trim().length > 0
 		}
 
+		// ОТЧЁТ
+
 		@ $mol_mem
 		override report() {
 			if( !this.filled() ) return [ this.Empty() ]
-			return [ this.Verdict(), this.Metrics(), this.Note() ]
+			return [ this.Verdict(), this.Metrics(), this.Status(), this.Note() ]
+		}
+
+		override status_kind() {
+			if( !this.llm_on() ) return ''
+			if( !this.key_ready() ) return 'fail'
+			if( this.failed() ) return 'fail'
+			if( this.busy() ) return 'wait'
+			return this.marks() ? 'done' : ''
+		}
+
+		@ $mol_mem
+		override status() {
+
+			// Ячейка волокна должна кем-то читаться, иначе её сметёт вместе с разбором.
+			this.task( this.slug() )
+
+			if( !this.llm_on() ) return []
+			if( !this.key_ready() ) return [ 'Нужен ключ OpenRouter. Вставь свой в поле выше.' ]
+
+			const failed = this.failed()
+			if( failed ) return [ '📛 ' + failed ]
+
+			if( this.busy() ) return [ 'Модель читает абзацы…' ]
+
+			const marks = this.marks()
+			if( !marks ) return []
+
+			return [ `Модель разметила абзацев: ${ marks.length }` ]
+		}
+
+		override note() {
+			if( this.marks() ) return 'Четыре семантические метрики размечены моделью по абзацам, остальные посчитаны по разметке текста.'
+			return 'Без модели считаются только структурные метрики. Антитезы, афоризмы, ссылки на «многих» и тающая к концу конкретика требуют модели, которая читает смысл абзацев.'
 		}
 
 		override tier() {
@@ -48,7 +205,7 @@ namespace $.$$ {
 		}
 
 		override metric_rows() {
-			return $bog_slop_metrics_ids.map( id => this.Metric( id ) )
+			return this.verdict().ids.map( id => this.Metric( id ) )
 		}
 
 		override metric_title( id: string ) {

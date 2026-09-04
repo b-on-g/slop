@@ -47,10 +47,23 @@ namespace $ {
 		'Чистый развёрнутый текст остаётся human'() {
 			const report = $bog_slop_metrics( text_human )
 			$mol_assert_equal( report.tier, 'human' )
-			for( const id of $bog_slop_metrics_ids ) {
+			for( const id of report.ids ) {
 				$mol_assert_equal( report.scores[ id ], 0 )
 			}
 			$mol_assert_equal( report.final, 0 )
+		},
+
+		'Без разметки модели считаются только шесть метрик'() {
+			const report = $bog_slop_metrics( text_human )
+			$mol_assert_equal( report.ids.length, 6 )
+			$mol_assert_equal( report.ids.indexOf( 'antithesis' ), -1 )
+			$mol_assert_equal( report.ids.indexOf( 'concreteness_decay' ), -1 )
+		},
+
+		'Одна метрика в потолке тянет индекс на верх своей полосы'() {
+			const report = $bog_slop_metrics( text_dashes )
+			$mol_assert_equal( report.tier, 'mixed' )
+			$mol_assert_equal( Math.abs( report.final - 0.65 ) < 1e-9, true )
 		},
 
 		'clamp01 режет края, итог не выходит за границы полосы'() {
@@ -73,9 +86,42 @@ namespace $ {
 			$mol_assert_equal( report.paras, 0 )
 			$mol_assert_equal( report.final, 0 )
 			$mol_assert_equal( report.tier, 'human' )
-			for( const id of $bog_slop_metrics_ids ) {
+			for( const id of report.ids ) {
 				$mol_assert_equal( Number.isFinite( report.scores[ id ] ), true )
 			}
+		},
+
+		'Конкретика, падающая к концу, даёт положительный наклон'() {
+			$mol_assert_equal( $bog_slop_metrics_decay([ 2, 2, 1, 1, 0, 0 ]) > 0, true )
+			$mol_assert_equal( $bog_slop_metrics_decay([ 0, 0, 1, 1, 2, 2 ]), 0 )
+			$mol_assert_equal( $bog_slop_metrics_decay([ 2, 2, 2, 2 ]), 0 )
+		},
+
+		'Меньше четырёх оценённых абзацев — тренд не считается'() {
+			$mol_assert_equal( $bog_slop_metrics_decay([ 2, 1, 0 ]), 0 )
+			$mol_assert_equal( $bog_slop_metrics_decay([ 2, null, 1, null, 0 ]), 0 )
+		},
+
+		'Разметка модели добавляет четыре семантические метрики'() {
+
+			const marks = $bog_slop_metrics_paras( text_human ).map( ( para, index )=> ({
+				patterns: index ? [] : [ 'antithesis' ],
+				concreteness: 2 - index,
+			}) )
+
+			const report = $bog_slop_metrics( text_human, marks )
+
+			$mol_assert_equal( report.ids.length, 10 )
+			$mol_assert_equal( report.scores.antithesis > 0, true )
+			$mol_assert_equal( report.scores.aphorism, 0 )
+			$mol_assert_equal( Number.isFinite( report.scores.concreteness_decay ), true )
+		},
+
+		'Обрывки и ограждения кода модели не отдаются'() {
+			$mol_assert_equal( $bog_slop_metrics_prose( '```js\nconst a = 1\n```' ), false )
+			$mol_assert_equal( $bog_slop_metrics_prose( '**Подзаголовок**' ), false )
+			$mol_assert_equal( $bog_slop_metrics_prose( 'Слишком короткий абзац.' ), false )
+			$mol_assert_equal( $bog_slop_metrics_prose( text_human.split( '\n\n' )[0] ), true )
 		},
 
 	})

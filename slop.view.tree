@@ -3,12 +3,30 @@ $bog_slop $mol_page
 	attr *
 		^
 		bog_slop_popup <= popup false
+	tools /
+		<= Switch $mol_check_box
+			title \С моделью
+			checked? <=> llm_on? false
 	body /
 		<= Input $mol_textarea
 			hint \Вставь текст — можно прямо с Markdown-разметкой
 			value? <=> text? \
+		<= Setup $mol_view
+			sub <= setup /
 		<= Report $mol_view
 			sub <= report /
+	Model $mol_select
+		hint \Модель
+		dictionary <= model_dict *
+		value? <=> llm_model? \
+	Key $mol_string
+		hint \Ключ OpenRouter — sk-or-v1-…
+		type \password
+		value? <=> llm_key? \
+	Keys_link $mol_link
+		uri \https://openrouter.ai/keys
+		target \_blank
+		title \Взять ключ
 	Empty $mol_view
 		sub /
 			<= empty_hint \Индекс считается сам, пока печатаешь. Кнопки нет.
@@ -19,9 +37,14 @@ $bog_slop $mol_page
 		note <= paras_label \
 	Metrics $mol_view
 		sub <= metric_rows /
+	Status $mol_view
+		attr *
+			^
+			bog_slop_state <= status_kind \
+		sub <= status /
 	Note $mol_view
 		sub /
-			<= note \Считаются только структурные метрики. Семантику — антитезы, афоризмы, ссылки на «многих», угасание конкретики к концу текста — эта версия не смотрит: модели, которая читала бы смысл абзацев, в расширении нет.
+			<= note \
 	Metric* $bog_slop_bar
 		title <= metric_title* \
 		value <= metric_value* \

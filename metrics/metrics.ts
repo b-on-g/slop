@@ -2,37 +2,76 @@ namespace $ {
 
 	export type $bog_slop_metrics_tier = 'human' | 'mixed' | 'ai'
 
+	/** Разметка одного абзаца моделью. */
+	export type $bog_slop_metrics_semantics = {
+		patterns: readonly string[]
+		/** Плотность конкретики 0-2, null — абзац не оценивался. */
+		concreteness: number | null
+	}
+
 	export type $bog_slop_metrics_report = {
 		final: number
 		tier: $bog_slop_metrics_tier
 		scores: Record< string, number >
+		/** Метрики, которые удалось посчитать, в порядке нумерации из статьи. */
+		ids: readonly string[]
 		paras: number
 	}
 
-	export const $bog_slop_metrics_ids = [
+	/** Метрики, которые считаются по одной только разметке текста. */
+	export const $bog_slop_metrics_ids_struct = [
 		'em_dash',
 		'one_liner',
 		'heading',
 		'filler',
 		'triad',
+	] as const
+
+	/** Паттерны, которые модель размечает по каждому абзацу. */
+	export const $bog_slop_metrics_ids_llm = [
+		'antithesis',
+		'aphorism',
+		'vague_attribution',
+		'pseudo_sincerity',
+	] as const
+
+	/** Все метрики в порядке нумерации из статьи. */
+	export const $bog_slop_metrics_ids = [
+		'em_dash',
+		'antithesis',
+		'one_liner',
+		'heading',
+		'filler',
+		'aphorism',
+		'triad',
+		'concreteness_decay',
+		'vague_attribution',
 		'pseudo_sincerity',
 	] as const
 
 	export const $bog_slop_metrics_weights: Record< string, number > = {
 		em_dash: 0.6,
+		antithesis: 1.0,
 		one_liner: 0.4,
 		heading: 0.9,
 		filler: 0.8,
+		aphorism: 0.9,
 		triad: 0.8,
+		concreteness_decay: 1.5,
+		vague_attribution: 0.9,
 		pseudo_sincerity: 0.7,
 	}
 
 	export const $bog_slop_metrics_titles: Record< string, string > = {
 		em_dash: 'Длинные тире',
+		antithesis: 'Антитезы «не X, а Y»',
 		one_liner: 'Абзацы в одну строку',
 		heading: 'Заголовки под копирку',
 		filler: 'Слова-прокладки',
+		aphorism: 'Афористичные концовки',
 		triad: 'Перечисления по три',
+		concreteness_decay: 'Конкретика тает к концу',
+		vague_attribution: 'Ссылки на «многих»',
 		pseudo_sincerity: 'Псевдооткровенность',
 	}
 
@@ -46,6 +85,12 @@ namespace $ {
 	const FULL_THRESHOLD = 0.90
 	const HIGH_THRESHOLD = 0.55
 	const MIN_HIGH_FOR_SYSTEMIC = 4
+
+	/** Меньше четырёх оценённых абзацев — тренд конкретики не считается. */
+	const TREND_MIN_POINTS = 4
+
+	/** Короче шести слов — абзац не стоит того, чтобы гонять его через модель. */
+	const PROSE_MIN_WORDS = 6
 
 	const FILLER_PHRASES = [
 		'грубо говоря', 'по сути', 'казалось бы', 'на самом деле', 'хуже того',
@@ -224,6 +269,47 @@ namespace $ {
 		return hits
 	}
 
+	/** Стоит ли отдавать абзац модели: не ограждение кода, не жирный подзаголовок, не обрывок. */
+	export function $bog_slop_metrics_prose( para: string ) {
+		const text = para.trim()
+		if( /^\s*```/.test( text ) ) return false
+		if( /^\*\*[^*]+\*\*$/.test( text ) ) return false
+		return word_count( text ) >= PROSE_MIN_WORDS
+	}
+
+	/** Доля абзацев, в которых модель нашла паттерн. */
+	function metric_pattern( hits: readonly boolean[] ) {
+		if( !hits.length ) return 0
+		const ratio = hits.filter( hit => hit ).length / hits.length
+		return $bog_slop_metrics_clamp01( ( ratio - 0.02 ) / 0.35 )
+	}
+
+	/** Наклон линейной регрессии по оценкам конкретики: падает к концу — счёт растёт. */
+	export function $bog_slop_metrics_decay( levels: readonly ( number | null )[] ) {
+
+		const span = Math.max( 1, levels.length - 1 )
+		const points = [] as [ number, number ][]
+
+		levels.forEach( ( level, index )=> {
+			if( level !== null ) points.push([ index / span, level ])
+		} )
+
+		if( points.length < TREND_MIN_POINTS ) return 0
+
+		const x_mean = points.reduce( ( sum, point )=> sum + point[0], 0 ) / points.length
+		const y_mean = points.reduce( ( sum, point )=> sum + point[1], 0 ) / points.length
+
+		let num = 0
+		let den = 0
+
+		for( const [ x, y ] of points ) {
+			num += ( x - x_mean ) * ( y - y_mean )
+			den += ( x - x_mean ) ** 2
+		}
+
+		return $bog_slop_metrics_clamp01( den ? -num / den : 0 )
+	}
+
 	export function $bog_slop_metrics_tier_of( scores: Record< string, number > ): $bog_slop_metrics_tier {
 
 		const vals = Object.values( scores )
@@ -235,7 +321,10 @@ namespace $ {
 		return 'human'
 	}
 
-	export function $bog_slop_metrics( markdown: string ): $bog_slop_metrics_report {
+	export function $bog_slop_metrics(
+		markdown: string,
+		semantics?: readonly $bog_slop_metrics_semantics[] | null,
+	): $bog_slop_metrics_report {
 
 		const text = $bog_slop_metrics_strip( markdown || '' )
 		const paras = $bog_slop_metrics_paras( text )
@@ -247,24 +336,43 @@ namespace $ {
 			heading: metric_heading( heads ),
 			filler: metric_filler( text ),
 			triad: metric_triad( paras, text ),
-			pseudo_sincerity: $bog_slop_metrics_clamp01( sincerity_boost( text ) * 0.1 ),
 		}
+
+		if( semantics?.length ) {
+
+			const marks = paras.map( ( para, index )=> semantics[ index ] )
+
+			for( const id of $bog_slop_metrics_ids_llm ) {
+				scores[ id ] = metric_pattern( marks.map( mark => mark?.patterns.includes( id ) ?? false ) )
+			}
+
+			scores.concreteness_decay = $bog_slop_metrics_decay( marks.map( mark => mark?.concreteness ?? null ) )
+
+		} else {
+
+			// Без модели остаётся грубая эвристика по маркерам — остальную семантику посчитать нечем.
+			scores.pseudo_sincerity = $bog_slop_metrics_clamp01( sincerity_boost( text ) * 0.1 )
+
+		}
+
+		const ids = $bog_slop_metrics_ids.filter( id => id in scores )
 
 		let num = 0
 		let den = 0
-		for( const id of $bog_slop_metrics_ids ) {
+
+		for( const id of ids ) {
 			const score = scores[ id ]
-			const weight = $bog_slop_metrics_weights[ id ]
-			num += score * score ** WEIGHT_POWER * weight
+			const weight = score ** WEIGHT_POWER * $bog_slop_metrics_weights[ id ]
+			num += score * weight
 			den += weight
 		}
 
-		const intensity = den ? num / den : 0
+		const intensity = den > 0 ? $bog_slop_metrics_clamp01( num / den ) : 0
 		const tier = $bog_slop_metrics_tier_of( scores )
 		const [ low, high ] = $bog_slop_metrics_bands[ tier ]
-		const final = low + $bog_slop_metrics_clamp01( intensity ) * ( high - low )
+		const final = low + intensity * ( high - low )
 
-		return { final, tier, scores, paras: paras.length }
+		return { final, tier, scores, ids, paras: paras.length }
 	}
 
 }

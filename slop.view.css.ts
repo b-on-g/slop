@@ -16,9 +16,45 @@ namespace $.$$ {
 			overflow: { y: 'auto' },
 		},
 
+		Setup: {
+			flex: { direction: 'row', grow: 0, shrink: 0, wrap: 'wrap' },
+			align: { items: 'center' },
+			gap: $mol_gap.space,
+		},
+
+		Model: {
+			flex: { grow: 0, shrink: 0, basis: '14rem' },
+		},
+
+		Key: {
+			flex: { grow: 1, shrink: 1, basis: '18rem' },
+			minWidth: 0,
+		},
+
 		Report: {
 			flex: { direction: 'column', grow: 0, shrink: 0 },
 			gap: $mol_gap.space,
+		},
+
+		Status: {
+			color: $mol_theme.shade,
+			font: { size: '.8125rem' },
+			padding: $mol_gap.text,
+
+			'@': {
+				bog_slop_state: {
+					wait: {
+						color: $mol_theme.special,
+					},
+					fail: {
+						color: '#e5484d',
+					},
+					done: {
+						color: '#2f9e44',
+					},
+				},
+			},
+
 		},
 
 		Empty: {
