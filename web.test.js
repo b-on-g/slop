@@ -1280,24 +1280,6 @@ var $;
 ;
 "use strict";
 var $;
-(function ($) {
-    function $mol_wait_timeout_async(timeout) {
-        const promise = new $mol_promise();
-        const task = new this.$mol_after_timeout(timeout, () => promise.done());
-        return Object.assign(promise, {
-            destructor: () => task.destructor()
-        });
-    }
-    $.$mol_wait_timeout_async = $mol_wait_timeout_async;
-    function $mol_wait_timeout(timeout) {
-        return this.$mol_wire_sync(this).$mol_wait_timeout_async(timeout);
-    }
-    $.$mol_wait_timeout = $mol_wait_timeout;
-})($ || ($ = {}));
-
-;
-"use strict";
-var $;
 (function ($_1) {
     var $$;
     (function ($$) {
@@ -2729,6 +2711,52 @@ var $;
 
 ;
 "use strict";
+var $;
+(function ($_1) {
+    var $$;
+    (function ($$) {
+        $mol_test({
+            'handle clicks by default'($) {
+                let clicked = false;
+                const clicker = $mol_button.make({
+                    $,
+                    click: (event) => { clicked = true; },
+                });
+                const element = clicker.dom_tree();
+                const event = $mol_dom_context.document.createEvent('mouseevent');
+                event.initEvent('click', true, true);
+                element.dispatchEvent(event);
+                $mol_assert_ok(clicked);
+            },
+            'no handle clicks if disabled'($) {
+                let clicked = false;
+                const clicker = $mol_button.make({
+                    $,
+                    click: (event) => { clicked = true; },
+                    enabled: () => false,
+                });
+                const element = clicker.dom_tree();
+                const event = $mol_dom_context.document.createEvent('mouseevent');
+                event.initEvent('click', true, true);
+                element.dispatchEvent(event);
+                $mol_assert_not(clicked);
+            },
+            async 'Store error'($) {
+                const clicker = $mol_button.make({
+                    $,
+                    click: (event) => $.$mol_fail(new Error('Test error')),
+                });
+                const event = $mol_dom_context.document.createEvent('mouseevent');
+                $mol_assert_fail(() => clicker.event_activate(event), 'Test error');
+                await Promise.resolve();
+                $mol_assert_equal(clicker.status()[0].message, 'Test error');
+            },
+        });
+    })($$ = $_1.$$ || ($_1.$$ = {}));
+})($ || ($ = {}));
+
+;
+"use strict";
 
 ;
 "use strict";
@@ -3103,52 +3131,6 @@ var $;
 ;
 "use strict";
 var $;
-(function ($_1) {
-    var $$;
-    (function ($$) {
-        $mol_test({
-            'handle clicks by default'($) {
-                let clicked = false;
-                const clicker = $mol_button.make({
-                    $,
-                    click: (event) => { clicked = true; },
-                });
-                const element = clicker.dom_tree();
-                const event = $mol_dom_context.document.createEvent('mouseevent');
-                event.initEvent('click', true, true);
-                element.dispatchEvent(event);
-                $mol_assert_ok(clicked);
-            },
-            'no handle clicks if disabled'($) {
-                let clicked = false;
-                const clicker = $mol_button.make({
-                    $,
-                    click: (event) => { clicked = true; },
-                    enabled: () => false,
-                });
-                const element = clicker.dom_tree();
-                const event = $mol_dom_context.document.createEvent('mouseevent');
-                event.initEvent('click', true, true);
-                element.dispatchEvent(event);
-                $mol_assert_not(clicked);
-            },
-            async 'Store error'($) {
-                const clicker = $mol_button.make({
-                    $,
-                    click: (event) => $.$mol_fail(new Error('Test error')),
-                });
-                const event = $mol_dom_context.document.createEvent('mouseevent');
-                $mol_assert_fail(() => clicker.event_activate(event), 'Test error');
-                await Promise.resolve();
-                $mol_assert_equal(clicker.status()[0].message, 'Test error');
-            },
-        });
-    })($$ = $_1.$$ || ($_1.$$ = {}));
-})($ || ($ = {}));
-
-;
-"use strict";
-var $;
 (function ($) {
     $mol_test({
         'local get set delete'() {
@@ -3313,6 +3295,89 @@ var $;
 ;
 "use strict";
 var $;
+(function ($_1) {
+    $mol_test_mocks.push(context => {
+        class $mol_state_arg_mock extends $mol_state_arg {
+            static $ = context;
+            static href(next) { return next || ''; }
+            static go(next) {
+                this.href(this.link(next));
+            }
+        }
+        __decorate([
+            $mol_mem
+        ], $mol_state_arg_mock, "href", null);
+        __decorate([
+            $mol_action
+        ], $mol_state_arg_mock, "go", null);
+        context.$mol_state_arg = $mol_state_arg_mock;
+    });
+    $mol_test({
+        'args as dictionary'($) {
+            $.$mol_state_arg.href('#!foo=bar/xxx');
+            $mol_assert_equal($.$mol_state_arg.dict(), { foo: 'bar', xxx: '' });
+            $.$mol_state_arg.dict({ foo: null, yyy: '', lol: '123' });
+            $mol_assert_equal($.$mol_state_arg.href().replace(/.*#/, '#'), '#!yyy/lol=123');
+        },
+        'one value from args'($) {
+            $.$mol_state_arg.href('#!foo=bar/xxx');
+            $mol_assert_equal($.$mol_state_arg.value('foo'), 'bar');
+            $mol_assert_equal($.$mol_state_arg.value('xxx'), '');
+            $.$mol_state_arg.value('foo', 'lol');
+            $mol_assert_equal($.$mol_state_arg.href().replace(/.*#/, '#'), '#!foo=lol/xxx');
+            $.$mol_state_arg.value('foo', '');
+            $mol_assert_equal($.$mol_state_arg.href().replace(/.*#/, '#'), '#!foo/xxx');
+            $.$mol_state_arg.value('foo', null);
+            $mol_assert_equal($.$mol_state_arg.href().replace(/.*#/, '#'), '#!xxx');
+        },
+        'nested args'($) {
+            const base = new $.$mol_state_arg('nested.');
+            class Nested extends $mol_state_arg {
+                constructor(prefix) {
+                    super(base.prefix + prefix);
+                }
+                static value = (key, next) => base.value(key, next);
+            }
+            $.$mol_state_arg.href('#!foo=bar/nested.xxx=123');
+            $mol_assert_equal(Nested.value('foo'), null);
+            $mol_assert_equal(Nested.value('xxx'), '123');
+            Nested.value('foo', 'lol');
+            $mol_assert_equal($.$mol_state_arg.href().replace(/.*#/, '#'), '#!foo=bar/nested.xxx=123/nested.foo=lol');
+        },
+    });
+})($ || ($ = {}));
+
+;
+"use strict";
+/** @jsx $mol_jsx */
+/** @jsxFrag $mol_jsx_frag */
+var $;
+(function ($) {
+    $mol_test({
+        'safe tag'() {
+            $mol_assert_equal($mol_dom_serialize($$.$mol_dom_safe([$mol_jsx("div", null, "foo")])[0]), $mol_dom_serialize($mol_jsx("div", null, "foo")));
+        },
+        'bad tag'() {
+            $mol_assert_equal($mol_dom_serialize($$.$mol_dom_safe([$mol_jsx("script", null, "alert('ahtung!')")])[0]), $mol_dom_serialize($mol_jsx($mol_jsx_frag, null, "alert('ahtung!')")));
+        },
+        'common attr'() {
+            $mol_assert_equal($mol_dom_serialize($$.$mol_dom_safe([$mol_jsx("a", { id: "foo" }, "foo")])[0]), $mol_dom_serialize($mol_jsx("a", { id: "foo" }, "foo")));
+        },
+        'safe attr'() {
+            $mol_assert_equal($mol_dom_serialize($$.$mol_dom_safe([$mol_jsx("a", { href: "https://example.org/" }, "foo")])[0]), $mol_dom_serialize($mol_jsx("a", { href: "https://example.org/" }, "foo")));
+        },
+        'bad attr'() {
+            $mol_assert_equal($mol_dom_serialize($$.$mol_dom_safe([$mol_jsx("a", { onclick: "alert('ahtung!')" }, "foo")])[0]), $mol_dom_serialize($mol_jsx("a", null, "foo")));
+        },
+        'danger attr'() {
+            $mol_assert_equal($mol_dom_serialize($$.$mol_dom_safe([$mol_jsx("a", { href: "javascript:alert('ahtung!')" }, "foo")])[0]), $mol_dom_serialize($mol_jsx("a", { href: "about:blank#javascript:alert('ahtung!')" }, "foo")));
+        },
+    });
+})($ || ($ = {}));
+
+;
+"use strict";
+var $;
 (function ($) {
     const text_dashes = [
         'Первый абзац — тут есть длинное тире и достаточно текста, чтобы абзац не считался короткой однострочной репликой.',
@@ -3353,10 +3418,21 @@ var $;
         'Чистый развёрнутый текст остаётся human'() {
             const report = $bog_slop_metrics(text_human);
             $mol_assert_equal(report.tier, 'human');
-            for (const id of $bog_slop_metrics_ids) {
+            for (const id of report.ids) {
                 $mol_assert_equal(report.scores[id], 0);
             }
             $mol_assert_equal(report.final, 0);
+        },
+        'Без разметки модели считаются только шесть метрик'() {
+            const report = $bog_slop_metrics(text_human);
+            $mol_assert_equal(report.ids.length, 6);
+            $mol_assert_equal(report.ids.indexOf('antithesis'), -1);
+            $mol_assert_equal(report.ids.indexOf('concreteness_decay'), -1);
+        },
+        'Одна метрика в потолке тянет индекс на верх своей полосы'() {
+            const report = $bog_slop_metrics(text_dashes);
+            $mol_assert_equal(report.tier, 'mixed');
+            $mol_assert_equal(Math.abs(report.final - 0.65) < 1e-9, true);
         },
         'clamp01 режет края, итог не выходит за границы полосы'() {
             $mol_assert_equal($bog_slop_metrics_clamp01(-0.5), 0);
@@ -3374,9 +3450,35 @@ var $;
             $mol_assert_equal(report.paras, 0);
             $mol_assert_equal(report.final, 0);
             $mol_assert_equal(report.tier, 'human');
-            for (const id of $bog_slop_metrics_ids) {
+            for (const id of report.ids) {
                 $mol_assert_equal(Number.isFinite(report.scores[id]), true);
             }
+        },
+        'Конкретика, падающая к концу, даёт положительный наклон'() {
+            $mol_assert_equal($bog_slop_metrics_decay([2, 2, 1, 1, 0, 0]) > 0, true);
+            $mol_assert_equal($bog_slop_metrics_decay([0, 0, 1, 1, 2, 2]), 0);
+            $mol_assert_equal($bog_slop_metrics_decay([2, 2, 2, 2]), 0);
+        },
+        'Меньше четырёх оценённых абзацев — тренд не считается'() {
+            $mol_assert_equal($bog_slop_metrics_decay([2, 1, 0]), 0);
+            $mol_assert_equal($bog_slop_metrics_decay([2, null, 1, null, 0]), 0);
+        },
+        'Разметка модели добавляет четыре семантические метрики'() {
+            const marks = $bog_slop_metrics_paras(text_human).map((para, index) => ({
+                patterns: index ? [] : ['antithesis'],
+                concreteness: 2 - index,
+            }));
+            const report = $bog_slop_metrics(text_human, marks);
+            $mol_assert_equal(report.ids.length, 10);
+            $mol_assert_equal(report.scores.antithesis > 0, true);
+            $mol_assert_equal(report.scores.aphorism, 0);
+            $mol_assert_equal(Number.isFinite(report.scores.concreteness_decay), true);
+        },
+        'Обрывки и ограждения кода модели не отдаются'() {
+            $mol_assert_equal($bog_slop_metrics_prose('```js\nconst a = 1\n```'), false);
+            $mol_assert_equal($bog_slop_metrics_prose('**Подзаголовок**'), false);
+            $mol_assert_equal($bog_slop_metrics_prose('Слишком короткий абзац.'), false);
+            $mol_assert_equal($bog_slop_metrics_prose(text_human.split('\n\n')[0]), true);
         },
     });
 })($ || ($ = {}));
