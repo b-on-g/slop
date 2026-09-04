@@ -51,12 +51,28 @@ namespace $ {
 		'Такие дела.',
 	].join( '\n\n' )
 
-	/** Разметка, которую на этом посте дала minimax-m3 через OpenRouter 04.09.2026. */
+	/**
+	 * Разметка, которую на этом посте дала minimax-m3 через OpenRouter 04.09.2026.
+	 * Семнадцать записей, а не двадцать две: пять блоков кода до модели уже не доезжают.
+	 */
 	const marks_post = [
-		[ null, [] ], [ 1, [] ], [ 1, [ 'aphorism' ] ], [ 2, [] ], [ 2, [] ], [ 2, [] ],
-		[ 2, [] ], [ 2, [] ], [ 1, [] ], [ 2, [] ], [ 2, [] ], [ 2, [] ], [ 0, [] ],
-		[ 2, [] ], [ 2, [] ], [ 1, [ 'antithesis' ] ], [ 1, [ 'aphorism' ] ], [ null, [] ],
-		[ 1, [ 'antithesis' ] ], [ 1, [] ], [ 1, [ 'pseudo_sincerity' ] ], [ null, [] ],
+		[ null, [] ],
+		[ 0, [] ],
+		[ 1, [] ],
+		[ 2, [] ],
+		[ 2, [] ],
+		[ 2, [ 'antithesis' ] ],
+		[ 1, [] ],
+		[ 0, [] ],
+		[ 2, [ 'antithesis' ] ],
+		[ 0, [] ],
+		[ 1, [ 'vague_attribution' ] ],
+		[ 1, [] ],
+		[ null, [] ],
+		[ 1, [ 'antithesis' ] ],
+		[ 1, [ 'aphorism' ] ],
+		[ 1, [ 'pseudo_sincerity' ] ],
+		[ null, [] ],
 	].map( ([ concreteness, patterns ])=> ({
 		concreteness: concreteness as number | null,
 		patterns: patterns as string[],
@@ -155,52 +171,67 @@ namespace $ {
 			$mol_assert_equal( Number.isFinite( report.scores.concreteness_decay ), true )
 		},
 
-		'Код без ограждений остаётся полноценным абзацем'() {
+		'Код без ограждений в абзацы не попадает'() {
 
 			const paras = $bog_slop_metrics_paras( $bog_slop_metrics_strip( text_post ) )
-			$mol_assert_equal( paras.length, 22 )
+			$mol_assert_equal( paras.length, 17 )
 
-			// Пять абзацев из двадцати двух — голые shell и TS. Они проходят и strip,
-			// и фильтр прозы, так что разбавляют знаменатель каждой доли на четверть.
-			const code = [ 5, 9, 10, 13, 14 ]
-			for( const index of code ) $mol_assert_equal( $bog_slop_metrics_prose( paras[ index ] ), true )
-			$mol_assert_equal( paras[5].startsWith( 'autossh' ), true )
+			for( const block of [
+				'autossh -M 0 -N -D 127.0.0.1:1080 \\\n  -o ExitOnForwardFailure=yes \\\n  user@vps',
+				'import { Agent } from \"node:http\";',
+				'export function createProxyAgent(proxyUrl: string): Agent {\n  return new SocksProxyAgent(proxyUrl);\n}',
+				'const agent = createProxyAgent(process.env.PROXY_URL);',
+				'export const http = axios.create({\n  httpAgent: agent,\n  proxy: false,\n});',
+			] ) $mol_assert_equal( $bog_slop_metrics_code( block ), true )
+
+			for( const para of paras ) $mol_assert_equal( $bog_slop_metrics_code( para ), false )
 		},
 
-		'Короткая реплика модели не достаётся, но из знаменателя не выпадает'() {
+		'Русская проза за код не сходит'() {
+			for( const source of [ text_dashes, text_short, text_filler, text_human, text_post ] ) {
+				for( const para of $bog_slop_metrics_paras( $bog_slop_metrics_strip( source ) ) ) {
+					$mol_assert_equal( $bog_slop_metrics_code( para ), false )
+				}
+			}
+		},
 
-			// Ровно те три абзаца, где слоп слышнее всего, модель и не увидит.
+		'Доля паттерна считается по прочитанному, а не по всем абзацам'() {
+
+			// Три реплики короче шести слов модели не достаются, значит и в знаменателе им не место.
 			$mol_assert_equal( $bog_slop_metrics_prose( 'Такие дела.' ), false )
 			$mol_assert_equal( $bog_slop_metrics_prose( 'А потом случилось смешное.' ), false )
 			$mol_assert_equal( $bog_slop_metrics_prose( 'Здарова, вайбкодеры!' ), false )
 
-			// Две антитезы на 22 абзаца, хотя прочитано было 19.
+			// Три антитезы на четырнадцать прочитанных абзацев, а не на семнадцать всего.
 			const report = $bog_slop_metrics( text_post, marks_post )
-			$mol_assert_equal( report.scores.antithesis.toFixed( 4 ), ( ( 2 / 22 - 0.02 ) / 0.35 ).toFixed( 4 ) )
+			$mol_assert_equal( report.scores.antithesis.toFixed( 4 ), ( ( 3 / 14 - 0.02 ) / 0.35 ).toFixed( 4 ) )
 		},
 
-		'Три метрики выше HIGH без единой на FULL держат вердикт human'() {
-
+		'Одной метрики на FULL хватает, четырёх на HIGH тоже'() {
 			$mol_assert_equal( $bog_slop_metrics_tier_of({ a: 0.71, b: 0.64, c: 0.73 }), 'human' )
 			$mol_assert_equal( $bog_slop_metrics_tier_of({ a: 0.71, b: 0.64, c: 0.73, d: 0.56 }), 'mixed' )
 			$mol_assert_equal( $bog_slop_metrics_tier_of({ a: 0.91 }), 'mixed' )
-
-			// Полоса human кончается на 0.35, так что интенсивность выше в индекс не пролезает.
-			for( const marks of [ null, marks_post ] ) {
-				const report = $bog_slop_metrics( text_post, marks )
-				$mol_assert_equal( report.tier, 'human' )
-				$mol_assert_equal( report.final <= 0.35, true )
-			}
+			$mol_assert_equal( $bog_slop_metrics_tier_of({ a: 0.91, b: 0.91, c: 0.91 }), 'ai' )
 		},
 
-		'На посте про прокси три метрики упираются в HIGH и ни одна не берёт FULL'() {
+		'Пост про прокси — слоп с примесью человеческого текста'() {
 
 			const report = $bog_slop_metrics( text_post, marks_post )
+
+			$mol_assert_equal( report.tier, 'mixed' )
+			$mol_assert_equal( report.final > 0.5, true )
+
 			const high = report.ids.filter( id => report.scores[ id ] >= 0.55 )
 			const full = report.ids.filter( id => report.scores[ id ] >= 0.90 )
 
-			$mol_assert_equal( full.length, 0 )
-			$mol_assert_equal( high.join( ' ' ), 'one_liner triad concreteness_decay' )
+			$mol_assert_equal( full.join( ' ' ), 'one_liner' )
+			$mol_assert_equal( high.join( ' ' ), 'antithesis one_liner triad' )
+		},
+
+		'Голый структурный разбор поста до mixed дотягивает сам'() {
+			const report = $bog_slop_metrics( text_post )
+			$mol_assert_equal( report.tier, 'mixed' )
+			$mol_assert_equal( report.final > 0.5, true )
 		},
 
 		'Обрывки и ограждения кода модели не отдаются'() {
