@@ -9,6 +9,8 @@ namespace $.$$ {
 	/** Пауза после последней клавиши, чтобы не гонять модель на каждую букву. */
 	const DEBOUNCE = 1500
 
+	const JEV = 'jev'
+
 	/** Разбор от модели вместе со слепком текста, для которого он получен. */
 	type Done = {
 		slug: string
@@ -30,13 +32,13 @@ namespace $.$$ {
 		// НАСТРОЙКИ
 
 		override llm_on( next?: boolean ) {
-			return this.$.$mol_state_local.value< boolean >( 'bog_slop_llm', next ) ?? false
+			return this.$.$mol_state_local.value< boolean >( 'bog_slop_llm', next ) ?? true
 		}
 
 		override llm_model( next?: string ) {
 			const name = this.$.$mol_state_local.value< string >( 'bog_slop_model', next )
 			// Бесплатные модели на OpenRouter приходят и уходят: забытую в хранилище подменяем живой.
-			if( !name || !( name in this.$.$bog_slop_model_names ) ) return this.$.$bog_slop_model_name_default
+			if( !name || !( name in this.model_dict() ) ) return JEV
 			return name
 		}
 
@@ -44,19 +46,25 @@ namespace $.$$ {
 			return this.$.$mol_state_local.value< string >( 'bog_slop_key', next ) ?? ''
 		}
 
+		@ $mol_mem
 		override model_dict() {
-			return this.$.$bog_slop_model_names
+			return { [ JEV ]: 'TypeSafe Jev', ... this.$.$bog_slop_model_names }
+		}
+
+		jev() {
+			return this.llm_model() === JEV
 		}
 
 		@ $mol_mem
 		override setup() {
 			if( !this.llm_on() ) return []
+			if( this.jev() ) return [ this.Model() ]
 			return [ this.Model(), this.Key(), this.Keys_link() ]
 		}
 
-		/** Есть ли чем авторизоваться: свой ключ или зашитый в сборку пул. */
+		/** Есть ли чем авторизоваться: Jev ходит через прокси без ключа, OpenRouter нужен свой или зашитый в сборку. */
 		key_ready() {
-			return Boolean( this.llm_key().trim() || this.$.$bog_slop_model_keys.length )
+			return this.jev() || Boolean( this.llm_key().trim() || this.$.$bog_slop_model_keys.length )
 		}
 
 		// РАЗБОР
@@ -78,6 +86,7 @@ namespace $.$$ {
 
 		@ $mol_mem
 		model() {
+			if( this.jev() ) return this.$.$bog_slop_jev.make({})
 			return this.$.$bog_slop_model.make({
 				name: $mol_const( this.llm_model() ),
 				key: $mol_const( this.llm_key().trim() ),
@@ -186,7 +195,7 @@ namespace $.$$ {
 			if( !marks ) return []
 
 			const name = this.done()?.name ?? ''
-			const label = this.$.$bog_slop_model_names[ name ] ?? name
+			const label = this.model_dict()[ name ] ?? name
 
 			return [ `${ label } разметила абзацев: ${ marks.length }` ]
 		}
