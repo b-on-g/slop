@@ -47,7 +47,7 @@ namespace $.$$ {
 		}
 
 		@ $mol_mem
-		override model_dict() {
+		override model_dict(): Record< string, string > {
 			return { [ JEV ]: 'TypeSafe Jev', ... this.$.$bog_slop_model_names }
 		}
 
