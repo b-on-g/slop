@@ -7909,7 +7909,7 @@ var $;
 })($ || ($ = {}));
 
 ;
-	($.$mol_hotkey) = class $mol_hotkey extends ($.$mol_plugin) {
+	($.$mol_hotkey2) = class $mol_hotkey2 extends ($.$mol_plugin) {
 		keydown(next){
 			if(next !== undefined) return next;
 			return null;
@@ -7917,20 +7917,11 @@ var $;
 		event(){
 			return {...(super.event()), "keydown": (next) => (this.keydown(next))};
 		}
-		key(){
+		action(){
 			return {};
 		}
-		mod_ctrl(){
-			return false;
-		}
-		mod_alt(){
-			return false;
-		}
-		mod_shift(){
-			return false;
-		}
 	};
-	($mol_mem(($.$mol_hotkey.prototype), "keydown"));
+	($mol_mem(($.$mol_hotkey2.prototype), "keydown"));
 
 
 ;
@@ -7947,27 +7938,71 @@ var $;
          * Plugin which adds handlers for keyboard keys.
          * @see [mol_keyboard_code](../keyboard/code/code.ts)
          */
-        class $mol_hotkey extends $.$mol_hotkey {
-            key() {
-                return super.key();
-            }
+        class $mol_hotkey2 extends $.$mol_hotkey2 {
             keydown(event) {
                 if (!event)
                     return;
                 if (event.defaultPrevented)
                     return;
-                let name = $mol_keyboard_code[event.keyCode];
-                if (this.mod_ctrl() !== (event.ctrlKey || event.metaKey))
-                    return;
-                if (this.mod_alt() !== event.altKey)
-                    return;
-                if (this.mod_shift() !== event.shiftKey)
-                    return;
-                const handle = this.key()[name];
-                if (handle)
-                    handle(event);
+                const key = [...new Set([
+                        ...(event.ctrlKey || event.metaKey) ? ['ctrl'] : [],
+                        ...event.altKey ? ['alt'] : [],
+                        ...event.shiftKey ? ['shift'] : [],
+                        $mol_keyboard_code[event.keyCode] ?? '?',
+                    ])].join('_');
+                this.action()[key]?.(event);
             }
         }
+        $$.$mol_hotkey2 = $mol_hotkey2;
+    })($$ = $.$$ || ($.$$ = {}));
+})($ || ($ = {}));
+
+;
+	($.$mol_hotkey) = class $mol_hotkey extends ($.$mol_hotkey2) {
+		key(){
+			return {};
+		}
+		mod_ctrl(){
+			return false;
+		}
+		mod_alt(){
+			return false;
+		}
+		mod_shift(){
+			return false;
+		}
+	};
+
+
+;
+"use strict";
+
+
+;
+"use strict";
+var $;
+(function ($) {
+    var $$;
+    (function ($$) {
+        /**
+         * Plugin which adds handlers for keyboard keys.
+         * @deprecated Use $mol_hotkey2
+         * @see [mol_keyboard_code](../keyboard/code/code.ts)
+         */
+        class $mol_hotkey extends $.$mol_hotkey {
+            action() {
+                const prefix = [...new Set([
+                        ...this.mod_ctrl() ? ['ctrl_'] : [],
+                        ...this.mod_alt() ? ['alt_'] : [],
+                        ...this.mod_shift() ? ['shift_'] : [],
+                    ])].join('');
+                return Object.fromEntries(Object.entries(this.key())
+                    .map(([key, val]) => [prefix + key, val]));
+            }
+        }
+        __decorate([
+            $mol_mem
+        ], $mol_hotkey.prototype, "action", null);
         $$.$mol_hotkey = $mol_hotkey;
     })($$ = $.$$ || ($.$$ = {}));
 })($ || ($ = {}));
@@ -8286,6 +8321,7 @@ var $;
 		}
 		View(){
 			const obj = new this.$.$mol_text_code();
+			(obj.attr) = () => ({...(this.$.$mol_text_code.prototype.attr.call(obj)), "inert": ""});
 			(obj.text) = () => ((this.value()));
 			(obj.render_visible_only) = () => (false);
 			(obj.row_numb) = (id) => ((this.row_numb(id)));
@@ -8862,7 +8898,7 @@ var $;
 "use strict";
 var $;
 (function ($) {
-    $mol_style_attach("mol/pop/pop.view.css", "@keyframes mol_pop_show {\n\tfrom {\n\t\topacity: 0;\n\t}\n}\n\n[mol_pop] {\n\tposition: relative;\n\tdisplay: inline-flex;\n}\n\n[mol_pop_bubble] {\n\tborder: none;\n\tpadding: 0;\n\tcolor: var(--mol_theme_text);\n\tbox-shadow: 0 0 1rem hsla(0,0%,0%,.5);\n\tborder-radius: var(--mol_gap_round);\n\tposition: fixed;\n\tz-index: var(--mol_layer_popup);\n\tbackground: var(--mol_theme_back);\n\tmax-width: none;\n\tmax-height: none;\n\t/* overflow: hidden;\n\toverflow-y: scroll;\n\toverflow-y: overlay; */\n\tword-break: normal;\n\twidth: max-content;\n\t/* height: max-content; */\n\tflex-direction: column;\n\tmax-width: calc( 100vw - var(--mol_gap_page) );\n\tmax-height: 80vw;\n\tcontain: paint;\n\ttransition-property: opacity;\n\t/* Safari ios layer fix, https://t.me/mam_mol/170017 */\n\ttransform: translateZ(0);\n\tanimation: mol_pop_show .1s ease-in;\n}\n\n:where( [mol_pop_bubble] > * ) {\n\tbackground: var(--mol_theme_card);\n}\n\n[mol_pop_bubble][mol_scroll] {\n\tbackground: var(--mol_theme_back);\n}\n\n[mol_pop_bubble]:focus {\n\toutline: none;\n}\n");
+    $mol_style_attach("mol/pop/pop.view.css", "@keyframes mol_pop_show {\n\tfrom {\n\t\topacity: 0;\n\t}\n}\n\n[mol_pop] {\n\tposition: relative;\n\tdisplay: inline-flex;\n}\n\n[mol_pop_bubble] {\n\tborder: none;\n\tpadding: 0;\n\tcolor: var(--mol_theme_text);\n\tbox-shadow: 0 0 1rem hsla(0,0%,0%,.5);\n\tborder-radius: var(--mol_gap_round);\n\tposition: fixed;\n\tz-index: var(--mol_layer_popup);\n\tbackground: var(--mol_theme_back);\n\tmax-width: none;\n\tmax-height: none;\n\t/* overflow: hidden;\n\toverflow-y: scroll;\n\toverflow-y: overlay; */\n\tword-break: normal;\n\twidth: max-content;\n\t/* height: max-content; */\n\tflex-direction: column;\n\tmax-width: 100vw;\n\tmax-height: 80vw;\n\tcontain: paint;\n\ttransition-property: opacity;\n\t/* Safari ios layer fix, https://t.me/mam_mol/170017 */\n\ttransform: translateZ(0);\n\tanimation: mol_pop_show .1s ease-in;\n}\n\n:where( [mol_pop_bubble] > * ) {\n\tbackground: var(--mol_theme_card);\n}\n\n[mol_pop_bubble][mol_scroll] {\n\tbackground: var(--mol_theme_back);\n}\n\n[mol_pop_bubble]:focus {\n\toutline: none;\n}\n");
 })($ || ($ = {}));
 
 ;
@@ -11210,6 +11246,88 @@ var $;
 "use strict";
 var $;
 (function ($) {
+    const PATTERNS = {
+        antithesis: `use a rhetorical contrast like "не X, а Y" / "дело не в X, а в Y" as a dramatic device rather than out of real necessity`,
+        aphorism: `end with a short quotable punchline that wraps it up like an aphorism`,
+        vague_attribution: `appeal to a generic authority ("исследования показывают", "играет ключевую роль", "стало поворотным моментом") without a concrete name, source or number`,
+        pseudo_sincerity: `try to win the reader over with assurances of honesty ("честно говоря", "без воды", "давайте будем честны", "спойлер")`,
+    };
+    const CONCRETENESS = [
+        'Only generic vague wording without a single fact, number or name',
+        'Mixed text',
+        'Dense specifics: numbers, dates, names, exact examples',
+    ];
+    class $bog_slop_jev extends $mol_object {
+        uri() { return 'https://tube.87.120.36.150.ip.giper.dev/typesafe'; }
+        batch() { return 6; }
+        threshold() { return .5; }
+        questions(index) {
+            const path = '`p' + index + '`';
+            const questions = {};
+            for (const id of $bog_slop_metrics_ids_llm) {
+                questions[`${index}_${id}`] = {
+                    type: 'noul',
+                    instructions: `Does the Russian paragraph in ${path} ${PATTERNS[id]}?`,
+                };
+            }
+            questions[`${index}_concreteness`] = {
+                type: 'score',
+                instructions: `How dense is concrete detail in the Russian paragraph in ${path}?`,
+                criteria: CONCRETENESS,
+            };
+            return questions;
+        }
+        request(state, questions) {
+            return this.$.$mol_fetch.json(this.uri(), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: 'jev-latest', state, questions }),
+            });
+        }
+        semantics(paras) {
+            const marks = paras.map(() => ({
+                patterns: [],
+                concreteness: null,
+            }));
+            const eligible = [];
+            paras.forEach((para, index) => {
+                if ($bog_slop_metrics_prose(para))
+                    eligible.push(index);
+            });
+            const size = this.batch();
+            for (let start = 0; start < eligible.length; start += size) {
+                const batch = eligible.slice(start, start + size);
+                const state = {};
+                const questions = {};
+                for (const index of batch) {
+                    state['p' + index] = paras[index];
+                    Object.assign(questions, this.questions(index));
+                }
+                const answers = this.request(state, questions).answers ?? {};
+                for (const index of batch) {
+                    const level = answers[`${index}_concreteness`]?.score;
+                    marks[index] = {
+                        patterns: $bog_slop_metrics_ids_llm.filter(id => (answers[`${index}_${id}`]?.noul ?? 0) > this.threshold()),
+                        concreteness: typeof level === 'number' ? Math.round(level) : null,
+                    };
+                }
+            }
+            return {
+                marks: marks,
+                name: 'jev',
+            };
+        }
+    }
+    __decorate([
+        $mol_action
+    ], $bog_slop_jev.prototype, "semantics", null);
+    $.$bog_slop_jev = $bog_slop_jev;
+})($ || ($ = {}));
+
+;
+"use strict";
+var $;
+(function ($) {
     function $mol_wait_timeout_async(timeout) {
         const promise = new $mol_promise();
         const task = new this.$mol_after_timeout(timeout, () => promise.done());
@@ -11261,6 +11379,7 @@ var $;
         };
         /** Пауза после последней клавиши, чтобы не гонять модель на каждую букву. */
         const DEBOUNCE = 1500;
+        const JEV = 'jev';
         class $bog_slop extends $.$bog_slop {
             popup() {
                 const loc = $mol_dom_context.location;
@@ -11272,29 +11391,34 @@ var $;
             }
             // НАСТРОЙКИ
             llm_on(next) {
-                return this.$.$mol_state_local.value('bog_slop_llm', next) ?? false;
+                return this.$.$mol_state_local.value('bog_slop_llm', next) ?? true;
             }
             llm_model(next) {
                 const name = this.$.$mol_state_local.value('bog_slop_model', next);
                 // Бесплатные модели на OpenRouter приходят и уходят: забытую в хранилище подменяем живой.
-                if (!name || !(name in this.$.$bog_slop_model_names))
-                    return this.$.$bog_slop_model_name_default;
+                if (!name || !(name in this.model_dict()))
+                    return JEV;
                 return name;
             }
             llm_key(next) {
                 return this.$.$mol_state_local.value('bog_slop_key', next) ?? '';
             }
             model_dict() {
-                return this.$.$bog_slop_model_names;
+                return { [JEV]: 'TypeSafe Jev', ...this.$.$bog_slop_model_names };
+            }
+            jev() {
+                return this.llm_model() === JEV;
             }
             setup() {
                 if (!this.llm_on())
                     return [];
+                if (this.jev())
+                    return [this.Model()];
                 return [this.Model(), this.Key(), this.Keys_link()];
             }
-            /** Есть ли чем авторизоваться: свой ключ или зашитый в сборку пул. */
+            /** Есть ли чем авторизоваться: Jev ходит через прокси без ключа, OpenRouter нужен свой или зашитый в сборку. */
             key_ready() {
-                return Boolean(this.llm_key().trim() || this.$.$bog_slop_model_keys.length);
+                return this.jev() || Boolean(this.llm_key().trim() || this.$.$bog_slop_model_keys.length);
             }
             // РАЗБОР
             /** Абзацы ровно в том виде, в каком их видят метрики. */
@@ -11312,6 +11436,8 @@ var $;
                 return [this.llm_model(), this.llm_key().trim(), this.text()].join('\n');
             }
             model() {
+                if (this.jev())
+                    return this.$.$bog_slop_jev.make({});
                 return this.$.$bog_slop_model.make({
                     name: $mol_const(this.llm_model()),
                     key: $mol_const(this.llm_key().trim()),
@@ -11409,7 +11535,7 @@ var $;
                 if (!marks)
                     return [];
                 const name = this.done()?.name ?? '';
-                const label = this.$.$bog_slop_model_names[name] ?? name;
+                const label = this.model_dict()[name] ?? name;
                 return [`${label} разметила абзацев: ${marks.length}`];
             }
             note() {
@@ -11445,6 +11571,9 @@ var $;
         __decorate([
             $mol_mem
         ], $bog_slop.prototype, "popup", null);
+        __decorate([
+            $mol_mem
+        ], $bog_slop.prototype, "model_dict", null);
         __decorate([
             $mol_mem
         ], $bog_slop.prototype, "setup", null);

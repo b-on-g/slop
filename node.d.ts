@@ -1298,7 +1298,7 @@ declare namespace $ {
      * Gap in CSS
      * @see https://page.hyoo.ru/#!=msdb74_bm7nsq
      */
-    let $mol_gap: Record<"text" | "space" | "blur" | "page" | "block" | "round" | "emoji", $mol_style_func<"var", unknown>>;
+    let $mol_gap: Record<"text" | "blur" | "page" | "block" | "space" | "round" | "emoji", $mol_style_func<"var", unknown>>;
 }
 
 declare namespace $ {
@@ -3223,11 +3223,30 @@ declare namespace $.$$ {
 
 declare namespace $ {
 
-	export class $mol_hotkey extends $mol_plugin {
+	export class $mol_hotkey2 extends $mol_plugin {
 		keydown( next?: any ): any
 		event( ): ({ 
-			keydown( next?: ReturnType< $mol_hotkey['keydown'] > ): ReturnType< $mol_hotkey['keydown'] >,
+			keydown( next?: ReturnType< $mol_hotkey2['keydown'] > ): ReturnType< $mol_hotkey2['keydown'] >,
 		})  & ReturnType< $mol_plugin['event'] >
+		action( ): Record<string, any>
+	}
+	
+}
+
+//# sourceMappingURL=hotkey2.view.tree.d.ts.map
+declare namespace $.$$ {
+    /**
+     * Plugin which adds handlers for keyboard keys.
+     * @see [mol_keyboard_code](../keyboard/code/code.ts)
+     */
+    class $mol_hotkey2 extends $.$mol_hotkey2 {
+        keydown(event?: KeyboardEvent): void;
+    }
+}
+
+declare namespace $ {
+
+	export class $mol_hotkey extends $mol_hotkey2 {
 		key( ): Record<string, any>
 		mod_ctrl( ): boolean
 		mod_alt( ): boolean
@@ -3240,11 +3259,13 @@ declare namespace $ {
 declare namespace $.$$ {
     /**
      * Plugin which adds handlers for keyboard keys.
+     * @deprecated Use $mol_hotkey2
      * @see [mol_keyboard_code](../keyboard/code/code.ts)
      */
     class $mol_hotkey extends $.$mol_hotkey {
-        key(): { [key in keyof typeof $mol_keyboard_code]?: (event: KeyboardEvent) => void; };
-        keydown(event?: KeyboardEvent): void;
+        action(): {
+            [k: string]: any;
+        };
     }
 }
 
@@ -3376,32 +3397,39 @@ declare namespace $ {
 		,
 		ReturnType< $mol_textarea_edit['submit_with_ctrl'] >
 	>
-	type $mol_text_code__text_mol_textarea_9 = $mol_type_enforce<
+	type $mol_text_code__attr_mol_textarea_9 = $mol_type_enforce<
+		({ 
+			'inert': string,
+		})  & ReturnType< $mol_text_code['attr'] >
+		,
+		ReturnType< $mol_text_code['attr'] >
+	>
+	type $mol_text_code__text_mol_textarea_10 = $mol_type_enforce<
 		ReturnType< $mol_textarea['value'] >
 		,
 		ReturnType< $mol_text_code['text'] >
 	>
-	type $mol_text_code__render_visible_only_mol_textarea_10 = $mol_type_enforce<
+	type $mol_text_code__render_visible_only_mol_textarea_11 = $mol_type_enforce<
 		boolean
 		,
 		ReturnType< $mol_text_code['render_visible_only'] >
 	>
-	type $mol_text_code__row_numb_mol_textarea_11 = $mol_type_enforce<
+	type $mol_text_code__row_numb_mol_textarea_12 = $mol_type_enforce<
 		ReturnType< $mol_textarea['row_numb'] >
 		,
 		ReturnType< $mol_text_code['row_numb'] >
 	>
-	type $mol_text_code__sidebar_showed_mol_textarea_12 = $mol_type_enforce<
+	type $mol_text_code__sidebar_showed_mol_textarea_13 = $mol_type_enforce<
 		ReturnType< $mol_textarea['sidebar_showed'] >
 		,
 		ReturnType< $mol_text_code['sidebar_showed'] >
 	>
-	type $mol_text_code__highlight_mol_textarea_13 = $mol_type_enforce<
+	type $mol_text_code__highlight_mol_textarea_14 = $mol_type_enforce<
 		ReturnType< $mol_textarea['highlight'] >
 		,
 		ReturnType< $mol_text_code['highlight'] >
 	>
-	type $mol_text_code__syntax_mol_textarea_14 = $mol_type_enforce<
+	type $mol_text_code__syntax_mol_textarea_15 = $mol_type_enforce<
 		ReturnType< $mol_textarea['syntax'] >
 		,
 		ReturnType< $mol_text_code['syntax'] >
@@ -4412,6 +4440,27 @@ declare namespace $ {
 }
 
 declare namespace $ {
+    type Answer = {
+        noul?: number;
+        score?: number;
+    };
+    export class $bog_slop_jev extends $mol_object {
+        uri(): string;
+        batch(): number;
+        threshold(): number;
+        questions(index: number): Record<string, object>;
+        request(state: Record<string, string>, questions: Record<string, object>): {
+            answers?: Record<string, Answer>;
+        };
+        semantics(paras: readonly string[]): {
+            marks: readonly $bog_slop_metrics_semantics[];
+            name: string;
+        };
+    }
+    export {};
+}
+
+declare namespace $ {
     function $mol_wait_timeout_async(this: $, timeout: number): Promise<void>;
     function $mol_wait_timeout(this: $, timeout: number): void;
 }
@@ -4687,14 +4736,15 @@ declare namespace $.$$ {
         llm_model(next?: string): string;
         llm_key(next?: string): string;
         model_dict(): Record<string, string>;
+        jev(): boolean;
         setup(): ($.$mol_string | $.$mol_select | $.$mol_link)[];
-        /** Есть ли чем авторизоваться: свой ключ или зашитый в сборку пул. */
+        /** Есть ли чем авторизоваться: Jev ходит через прокси без ключа, OpenRouter нужен свой или зашитый в сборку. */
         key_ready(): boolean;
         /** Абзацы ровно в том виде, в каком их видят метрики. */
         paras(): string[];
         /** Слепок текста и настроек: пока он не меняется, ходить в модель незачем. */
         slug(): string;
-        model(): $bog_slop_model;
+        model(): $bog_slop_model | $bog_slop_jev;
         done(next?: Done | null): Done | null;
         failed(next?: string): string;
         /**
